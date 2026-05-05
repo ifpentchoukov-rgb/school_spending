@@ -479,6 +479,29 @@ NJ was the next-biggest unimplemented state at 1.05M enrollment. NJDOE publishes
 - Spot check: Newark $1.49B, Elizabeth $909M, Jersey City $906M, Paterson $819M, Trenton $457M — all match expected scale.
 - Idempotent. Registered in `runner/registry.py` with `fy_offset=-3` (NJ lags one extra year vs the other states).
 
+#### UT extractor (2026-05-05) ✅
+
+UT extractor follows AZ being deferred (AZ Auditor's K-12 spending data is PDF-only and ADE blocks our IP/UA). UT publishes a clean USBE Annual Financial Report Summary Expenditure Excel.
+
+- `extractors/ut.py` pulls `https://www.schools.utah.gov/financialoperations/reporting/reports/annualfinancialreport/{YYYY}fiscalyear/.../AFR%20Summary%20Expenditure%20AF.xlsx`. Path varies slightly by year; `KNOWN_FILE_URLS` map per FY.
+- Topline: `Gov Funds Total` sheet, col 38 'Grand Total' — all-funds governmental operating expenditure across 5 functional categories × 8 object subcategories.
+- Crosswalk: master `state_leaid` `UT-{NN}` (2-digit zero-padded) for districts; `UT-A{N}` for the 3 charter LEAs in master. AFR uses LeaType + LeaNbr; for `LeaType='District'`, key = `f"{LeaNbr:02d}"` matches master directly.
+- Latest published: FY24 (SY 2023-24).
+- Coverage: 41 of 41 master UT districts (100%). 15 AFR charters skipped (master only has 3 charter LEAs and the LeaNbr → A-code map isn't built yet — sibling crosswalk TBD).
+- **Implementation note:** had to switch from `read_only=True` to non-readonly mode in openpyxl because the AFR sheet has merged cells in header rows that read_only mode doesn't expose consistently.
+- Spot check: Davis $1.09B, Alpine $1.07B, Granite $926M, Jordan $739M, Nebo $633M — all match expected scale.
+- Idempotent. Registered in `runner/registry.py` with `fy_offset=-3`.
+
+#### AZ extractor (2026-05-05) ⏸️ deferred
+
+Investigated AZ Auditor General + ADE + AZ Open Data; none provide a clean bulk K-12 financial feed accessible from CLI:
+- AZ Auditor publishes per-district compliance PDFs only; no bulk Excel/CSV with expenditure detail at any URL pattern tried (multiple slug guesses 404'd).
+- ADE finance pages (`azed.gov/finance`, `/budget`) all return 403 from CLI and from WebFetch — Akamai-style block.
+- AZ Open Data (`data.az.gov`, `azopendata.az.gov`) not Socrata-domain; no API.
+- AZ Auditor's annual "Spending in Arizona's Classrooms" report is PDF-only (per WebFetch).
+
+Same wall as NY. Path forward when revisited: Chrome-MCP automation against the Auditor's Tableau-based K-12 Data Explorer, or FOIA the Auditor for the underlying spreadsheet.
+
 ---
 
 ## 7. Conventions

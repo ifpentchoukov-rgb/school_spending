@@ -162,6 +162,16 @@ REGISTRY: list[ExtractorSpec] = [
         fy_offset=-3,
         notes="NJDOE TGES Detail XLSX; topline = Total Spending; county+code crosswalk",
     ),
+    # UT
+    ExtractorSpec(
+        state_postal="UT",
+        kind="actuals",
+        module="extractors.ut",
+        # USBE AFR Summary Expenditure FY24 published in 2025 — same lag
+        # pattern as NJ. FY27 calendar maps to FY24 file in hand.
+        fy_offset=-3,
+        notes="USBE AFR Summary Expenditure XLSX; topline = Gov Funds Total Grand Total; districts only (charters TBD)",
+    ),
 ]
 
 
