@@ -152,6 +152,16 @@ REGISTRY: list[ExtractorSpec] = [
         fy_offset=-2,
         notes="OSPI F-196 10-year XLSX; topline = General Fund EXP by District last column",
     ),
+    # NJ
+    ExtractorSpec(
+        state_postal="NJ",
+        kind="actuals",
+        module="extractors.nj",
+        # NJ TGES Detail FY24 published in 2025 — NJDOE lags one year more
+        # than the others. FY27 calendar maps to FY24 file in hand.
+        fy_offset=-3,
+        notes="NJDOE TGES Detail XLSX; topline = Total Spending; county+code crosswalk",
+    ),
 ]
 
 

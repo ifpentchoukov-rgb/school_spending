@@ -467,6 +467,18 @@ WA was the next-biggest unimplemented state at 1.08M enrollment. OSPI publishes 
 - Spot check: Seattle School District No. 1 $1.14B, Spokane $567M, Tacoma $561M, Lake Washington $544M, Kent $518M — all match expected scale.
 - Idempotent. Registered in `runner/registry.py` with `fy_offset=-2`.
 
+#### NJ extractor (2026-05-05) ✅
+
+NJ was the next-biggest unimplemented state at 1.05M enrollment. NJDOE publishes the **Taxpayers' Guide to Education Spending (TGES)** annually with one Detail Excel per FY.
+
+- `extractors/nj.py` pulls `https://www.nj.gov/education/guide/docs/{YEAR}/Detail_FY{NN}.xlsx`. The year-after-FY release directory; `KNOWN_FILE_URLS` map per FY.
+- Topline: 'Total Spending' column (= general current expense + capital outlay + grants/entitlements + food services + debt service). Aligned with F-33 'total expenditures' frame.
+- Crosswalk: master `state_leaid` `NJ-{2-digit-County}{4-digit-District}` (e.g. `NJ-010110` Atlantic City). TGES gives `County` text + `District Code`. Built `NJ_COUNTY_CODES` map (21 counties, alphabetical 01-41 odd-numbered) → `cc + zfill(district_code, 4)` matches master suffix.
+- Latest published: FY24 (SY 2023-24) — NJDOE publication lag is ~one year longer than other states.
+- Coverage: 231 records inserted of 265 master NJ operating LEAs (~87%). 440 TGES rows unmatched are charter LEAs (separate filing scheme), educational services commissions, county vocational/special services schools — entities that don't appear in master operating-LEA universe.
+- Spot check: Newark $1.49B, Elizabeth $909M, Jersey City $906M, Paterson $819M, Trenton $457M — all match expected scale.
+- Idempotent. Registered in `runner/registry.py` with `fy_offset=-3` (NJ lags one extra year vs the other states).
+
 ---
 
 ## 7. Conventions
