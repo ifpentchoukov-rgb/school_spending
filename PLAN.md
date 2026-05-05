@@ -320,12 +320,14 @@ Aim for 10 states per session. The full table can take a week of part-time work.
 
 ### Phase 4 — Daily scheduler + cron
 
-- [ ] Build `runner/daily.py` that reads `state_calendars`, picks active states, dispatches extractors
-- [ ] Wire to GitHub Actions cron at 06:00 UTC
-- [ ] Add a daily summary report generator (markdown output as a GitHub Actions artifact)
-- [ ] Add basic monitoring: any extractor in `failed` state for two consecutive runs should emit a GitHub Issue automatically (use the `gh` CLI or actions/github-script)
+- [x] Build `runner/daily.py` that reads `state_calendars`, picks active states, dispatches extractors. Calendar gating per PLAN.md §5: today ∈ [proposed_window_start, adoption_deadline + 30 days]. Extractor selection driven by `runner/registry.py`. CLI flags: `--fiscal-year`, `--triggered-by`, `--include-actuals`, `--states`, `--all-states`, `--today`.
+- [x] Wire to GitHub Actions cron at 06:00 UTC. Replaced the Phase-0 hello stub with the real workflow. Workflow installs `mdbtools`, sets up Python 3.12, runs the runner, uploads `daily_summary.md` as a 30-day artifact.
+- [x] Daily summary report generator — markdown with active calendar windows, per-extractor results table, list of active-but-unimplemented states.
+- [ ] Basic monitoring: any extractor in `failed` state for two consecutive runs should emit a GitHub Issue automatically. (Workflow has `permissions.issues: write`; the alert step is not yet implemented.)
 
 **Acceptance:** workflow runs on schedule, produces a summary, has run successfully for 3 consecutive days without intervention.
+
+**Status (2026-05-05):** First two boxes met. CI run [25386201419](https://github.com/ifpentchoukov-rgb/school_spending/actions/runs/25386201419) succeeded — 28 active states identified for FY27, CA budget extractor ran (0 records since FY27 SACS submissions don't open until fall 2026; expected). Artifact downloaded and verified. **Cron will fire automatically each day at 06:00 UTC; the 3-consecutive-day clock starts now.** The auto-issue-on-failure step is queued as a follow-up.
 
 ### Phase 5 — Verification workflow
 
