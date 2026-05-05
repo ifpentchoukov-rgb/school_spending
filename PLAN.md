@@ -502,6 +502,18 @@ Investigated AZ Auditor General + ADE + AZ Open Data; none provide a clean bulk 
 
 Same wall as NY. Path forward when revisited: Chrome-MCP automation against the Auditor's Tableau-based K-12 Data Explorer, or FOIA the Auditor for the underlying spreadsheet.
 
+#### CT extractor (2026-05-05) ✅
+
+CT was the first state where we found a clean **adopted-budget** SODA API feed via `data.ct.gov`. The OPM Fiscal Health Monitoring System publishes municipal adopted budgets nearly in real-time, with `date_budget_adopted` recorded for each row.
+
+- `extractors/ct.py` queries `https://data.ct.gov/resource/pcg4-s5rc.json?$where=fiscal_period_of_budget=N` (Socrata SoQL).
+- Topline: `education_expenditures` field. For towns with their own school district this is the district's adopted budget; for towns in a regional school district this is the assessment to the regional district.
+- Crosswalk: master `state_leaid` `CT-{7-digit}` doesn't map to town name. Built name-matching crosswalk: strip "School District" / "Public Schools" / "Regional School District" suffix from master `lea_name`, uppercase, match against OPM `entity_name`. Excludes regional/cooperative/charter/academy LEAs from the crosswalk since they don't have a 1-town equivalent.
+- FY26 (SY 2025-26) data fully published as of 2026-05-05; FY22-FY26 all have ~170 entities each.
+- Coverage: 117 records inserted of 122 town/city CT operating LEAs (~96%). 52 unmatched OPM entities are mostly towns belonging to regional districts (their education line is the regional assessment, not the regional district's own budget).
+- Spot check: Stamford $352M (adopted 2025-05-22), Hartford $284M (2025-05-21), Bridgeport $246M (2025-05-19), Norwalk $243M, Fairfield $233M.
+- Idempotent. Registered with `kind=budget, fy_offset=0` (data updates near-real-time).
+
 ---
 
 ## 7. Conventions

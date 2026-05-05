@@ -172,6 +172,17 @@ REGISTRY: list[ExtractorSpec] = [
         fy_offset=-3,
         notes="USBE AFR Summary Expenditure XLSX; topline = Gov Funds Total Grand Total; districts only (charters TBD)",
     ),
+    # CT
+    ExtractorSpec(
+        state_postal="CT",
+        kind="budget",
+        module="extractors.ct",
+        # CT OPM publishes adopted municipal budgets via Socrata SODA API
+        # almost in real-time (Bridgeport adopted 2025-05-19 for FY26 and
+        # was in the dataset). FY27 calendar maps to FY27 directly.
+        fy_offset=0,
+        notes="CT OPM Adopted Municipal Budget SoQL API; topline = education_expenditures; town districts only (regional districts TBD)",
+    ),
 ]
 
 
