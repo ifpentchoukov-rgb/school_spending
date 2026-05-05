@@ -514,6 +514,61 @@ CT was the first state where we found a clean **adopted-budget** SODA API feed v
 - Spot check: Stamford $352M (adopted 2025-05-22), Hartford $284M (2025-05-21), Bridgeport $246M (2025-05-19), Norwalk $243M, Fairfield $233M.
 - Idempotent. Registered with `kind=budget, fy_offset=0` (data updates near-real-time).
 
+#### TN extractor (2026-05-05) ✅
+
+TN publishes the Annual Statistical Report (ASR) annually per Tenn. Code Ann. § 49-1-211. The 2024-25 ASR was published Feb 2026 as a single ZIP with 50+ Excel tables; Table 51 has per-district current expenditures.
+
+- `extractors/tn.py` pulls `https://www.tn.gov/content/dam/tn/education/documents/asr/2024-25_ASR_Excel.zip` (URL pattern requires per-FY entry in `KNOWN_FILE_URLS`).
+- Topline: Table 51 col 3 `TOTAL OPERATING EXPENDITURES` per district (audited current expenditures — instruction + student services + admin + plant O&M + other current; aligned with F-33 frame).
+- Crosswalk: master `state_leaid` `TN-{5-digit}` → zero-pad ASR Table 51 col 0 (3-digit district code) to 5 digits.
+- Coverage: 127 of 129 master TN operating LEAs (~98%).
+- Idempotent. Registered with `kind=actuals, fy_offset=-2` (FY27 calendar runs trigger the FY25 fetch).
+
+#### MO scoping notes (2026-05-05) ⏸️ deferred
+
+MO was the next-biggest unimplemented state at ~870k enrollment. DESE (Dept. of Elementary and Secondary Education) collects per-district financial data via the Annual Secretary of the Board Report (ASBR) under § 162.821 RSMo, due Aug 15 each year. Findings:
+
+- **DESE ASBR PublicView** (`apps.dese.mo.gov/ASBR/PublicView.aspx`) — public (no login), but ASP.NET WebForms with `__doPostBack` for district selection AND for each report (ASBR Report, Per-Pupil Building Level Expenditures, Indirect Cost Calc, Local Effort, etc.). Reports rendered server-side via SSRS-style ReportViewer. **No bulk download / Export-to-Excel / CSV button visible.** Data is per-district × per-FY, requires VIEWSTATE postback automation against ~520 districts.
+- **DESE main MCDS** (`apps.dese.mo.gov/MCDS/`) — all paths redirect to `/WebLogin/Login.aspx` (login-only). QuickFacts, PublicReports, SchoolFinance — same wall.
+- **DESE School Finance / Data & Reports** (`dese.mo.gov/financial-admin-services/school-finance/data-reports-0` and `/financial-reports`) — landing pages of state-aid summaries (PDFs of Local Effort, Transportation Transfer, etc.); no per-district expenditure bulk file.
+- **`dese.mo.gov/school-data`** — navigation hub only; no bulk finance CSV.
+- **Socrata `data.mo.gov`** — 0 datasets matching "school expenditure" or similar.
+
+**Decision (2026-05-05):** Defer MO extractor. Same wall as NY / AZ — public per-district data, no bulk feed. Path forward when revisited: (a) Chrome-MCP automation against ASBR PublicView with 500+ postback iterations, (b) FOIA / direct request to DESE School Finance (`finadmgov@dese.mo.gov`) for the per-district ASBR bulk Excel, or (c) ASP.NET VIEWSTATE scraper that cycles district codes from the public dropdown and parses the rendered SSRS HTML. Captured as Phase 6 follow-up; not blocking.
+
+#### MN scoping notes (2026-05-05) ⏸️ deferred
+
+MN was the next-biggest unimplemented state at ~840k enrollment. MDE collects per-district financial data via UFARS (Uniform Financial Accounting and Reporting Standards). Findings:
+
+- **MDE Analytics MFR** (`pub.education.mn.gov/MDEAnalytics/DataTopic.jsp?TOPICID=9`, "Minnesota Funding Reports") and **Financial Profiles** (TOPICID=42) — both behind Perfdrive (Radware) bot/captcha protection. Plain GET → captcha redirect. Same wall on `public.education.mn.gov` mirror (SSL cert issue + 404 on `mass.gov`-style retry).
+- **MDE Report Card** (`rc.education.mn.gov`) — JS app (RequireJS); "How is money spent?" tile is interactive only; no static dataset URL exposed.
+- **`/mdeprod/idcplg?dDocName=005481` ("District Revenues and Expenditures Budget for FY2025 and FY2026")** — looks promising in the search but is a **blank publication template** (Form ED-00110-48); districts fill it in and post to their own websites under § 123B.10. No aggregated MN-wide file.
+- **UFARS File Upload** — submission endpoint only (EDIAM-authenticated).
+
+**Decision (2026-05-05):** Defer MN extractor. Same wall as NY / AZ / MO — bulk data is gated behind interactive analytics tools with bot protection, and the only static publication is the blank form template. Path forward when revisited: (a) Chrome-MCP automation through Perfdrive captcha against MFR/Financial Profiles, (b) FOIA / direct request to MDE Financial Management (`mde.ufars-accounting@state.mn.us`) for the UFARS bulk extract, or (c) per-district scrape of the publication forms posted on each district's website (§ 123B.10 mandate). Captured as Phase 6 follow-up; not blocking.
+
+#### TN extractor (2026-05-05) ✅
+
+TN publishes the Annual Statistical Report (ASR) annually per Tenn. Code Ann. § 49-1-211. The 2024-25 ASR was published Feb 2026 as a single ZIP with 50+ Excel tables; Table 51 has per-district current expenditures.
+
+- `extractors/tn.py` pulls `https://www.tn.gov/content/dam/tn/education/documents/asr/2024-25_ASR_Excel.zip` (URL pattern requires per-FY entry in `KNOWN_FILE_URLS`).
+- Topline: Table 51 col 3 `TOTAL OPERATING EXPENDITURES` per district (audited current expenditures — instruction + student services + admin + plant O&M + other current; aligned with F-33 frame).
+- Crosswalk: master `state_leaid` `TN-{5-digit}` → zero-pad ASR Table 51 col 0 (3-digit district code) to 5 digits.
+- Coverage: 127 of 129 master TN operating LEAs (~98%).
+- Idempotent. Registered with `kind=actuals, fy_offset=-2` (FY27 calendar runs trigger the FY25 fetch).
+
+#### MA extractor (2026-05-05) ✅
+
+MA DESE Profiles publishes a statewide Per-Pupil Expenditures (PPX) view that embeds the entire all-district table directly in the HTML response — no postback or login required for the latest balanced FY.
+
+- `extractors/ma.py` GETs `https://profiles.doe.mass.edu/statereport/ppx.aspx`, parses `<table id='tblPerPupilExpenditure'>`, and reads the `Total Expenditures` column.
+- Topline: `Total Expenditures` per district (all funds — in-district + out-of-district + school-choice + educational-collaborative). EOYR-derived; aligned with F-33 'current expenditures' frame.
+- Crosswalk: master `state_leaid` `MA-{4-digit}` → first 4 digits of DESE 8-digit `district_code` (e.g. `00010000` → `MA-0001` Abington).
+- Latest FY served: FY24 (SY 2023-24); page detects selected FY automatically. The plain GET only returns the latest balanced FY; switching FYs requires a __VIEWSTATE POST. Captured `page_fy` overrides the requested fiscal_year if the page has rolled over.
+- Coverage: 228 of 228 master MA operating LEAs (100%). 168 unmatched DESE codes are sub-orgs (out-of-district / collaborative / charter-network / Chapter-766) not in our operating-LEA universe.
+- Spot check: Boston $2.04B, Springfield $749M, Worcester $620M, Lynn $417M, Lowell $378M — match public reporting.
+- Idempotent. Registered with `kind=actuals, fy_offset=-3` (FY27 calendar maps to FY24 file in hand; will auto-flip when FY25 PPX publishes after Dec 2025 EOYR audit cycle).
+
 ---
 
 ## 7. Conventions

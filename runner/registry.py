@@ -192,6 +192,17 @@ REGISTRY: list[ExtractorSpec] = [
         fy_offset=-2,
         notes="TDOE Annual Statistical Report ZIP; topline = Table 51 'TOTAL OPERATING EXPENDITURES'",
     ),
+    # MA
+    ExtractorSpec(
+        state_postal="MA",
+        kind="actuals",
+        module="extractors.ma",
+        # DESE Profiles PPX page only serves the latest balanced FY via
+        # plain GET; FY24 is the latest as of 2026-05-05. FY25 publishes
+        # after Dec 2025 EOYR audit cycle, then page will auto-flip.
+        fy_offset=-3,
+        notes="DESE Profiles statereport ppx.aspx HTML; topline = 'Total Expenditures' (all funds, EOYR-derived)",
+    ),
 ]
 
 
