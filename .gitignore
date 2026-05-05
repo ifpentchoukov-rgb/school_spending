@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+
+# Environment
+.env
+.env.local
+.env.*.local
+.envrc
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+*.swp
+
+# Claude Code session state
+.claude/
+
+# Source documents — do not commit. They go to Supabase Storage.
+raw/
+*.mdb
+*.exe
+*.pdf
+*.xlsx.lock
+
+# Allow legacy seed outputs (small, useful, won't change)
+!legacy/**/processed/*.csv
+!legacy/**/processed/*.xlsx
+!legacy/**/processed/*.txt
+
+# Build artifacts
+build/
+dist/
+*.egg
+
+# Test
+.pytest_cache/
+.coverage
+htmlcov/

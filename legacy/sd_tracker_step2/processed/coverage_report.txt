@@ -1,0 +1,38 @@
+============================================================
+School District Spending Tracker — Coverage Report
+============================================================
+
+Operating districts in master:      11,880
+Districts with extracted signal:    1,607 (13.5%)
+States covered by extractors:       3 of 51
+
+Total FY25/latest topline tracked:  $213.2B
+Median YoY change (where known):    2.3%
+
+Direction summary (extracted records):
+   decreased:   549 districts | $  59.4B | median YoY   -3.3%
+   increased: 1,057 districts | $ 153.8B | median YoY   +5.0%
+     unknown:     1 districts | $   0.0B | median YoY   +nan%
+
+By state (top 20 by district count):
+  state  tier   distr  signal   cvg%  incr  decr  topln $B
+  TX     1      1,069   1,068  99.9%   660   408      70.8
+  NY     1        738       0   0.0%     0     0       0.0
+  CA     1        697     472  67.7%   339   133     110.4
+  MI     1        663       0   0.0%     0     0       0.0
+  OH     1        646       0   0.0%     0     0       0.0
+  PA     1        545       0   0.0%     0     0       0.0
+  MO     1        459       0   0.0%     0     0       0.0
+  OK     1        428       0   0.0%     0     0       0.0
+  IL     1        397       0   0.0%     0     0       0.0
+  MN     1        386       0   0.0%     0     0       0.0
+  WI     1        377       0   0.0%     0     0       0.0
+  IN     1        335       0   0.0%     0     0       0.0
+  IA     1        325       0   0.0%     0     0       0.0
+  KS     1        286       0   0.0%     0     0       0.0
+  NJ     1        265       0   0.0%     0     0       0.0
+  WA     1        258       0   0.0%     0     0       0.0
+  NE     2        245       0   0.0%     0     0       0.0
+  AR     1        244       0   0.0%     0     0       0.0
+  MA     1        228       0   0.0%     0     0       0.0
+  NC     1        196       0   0.0%     0     0       0.0

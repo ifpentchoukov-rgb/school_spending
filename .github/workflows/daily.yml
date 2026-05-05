@@ -1,0 +1,18 @@
+name: Daily extractor run
+
+on:
+  schedule:
+    # 06:00 UTC daily (PLAN.md §5).
+    - cron: "0 6 * * *"
+  workflow_dispatch: {}
+
+jobs:
+  hello:
+    name: Hello (Phase 0 stub)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Print hello
+        run: |
+          echo "hello from the daily extractor stub"
+          echo "UTC time: $(date -u --iso-8601=seconds)"
+          echo "Phase 0 stub — replaced in Phase 4 with the real runner."
