@@ -231,6 +231,22 @@ Reuse the Phase-1.5 architecture to migrate the legacy step 2 TX/CA extractors i
 
 **Known gap deferred:** FL FY25 actuals still point at the legacy synthetic `source_documents` row (`legacy:step2:FL`). To upgrade their provenance, build an FL AFR extractor (the legacy `fl.py` AFR pattern) — queued as a follow-up. Doesn't block any current phase.
 
+### Phase 1.7 — Close the FL FY25 provenance gap (2026-05-05)
+
+Port the legacy AFR extractor as `extractors/fl_afr.py`. Sibling to `extractors/fl.py` (which handles the Summary Budget portal == adopted budgets) — different document, different status (`actual`).
+
+- [x] **fl_afr**: pulls per-county AFR PDFs from `https://www.fldoe.org/file/7507/{shortcode}afr{County}.pdf`, parses Statement of Revenues' General Fund 100 `TOTAL EXPENDITURES 0000` first amount column. Stored at `fl/fy2025/afr/{County}2425afr.pdf`. Re-extracted 67 records; 67 legacy seed rows superseded.
+- [x] Re-run is idempotent (records_changed=0).
+
+**Acceptance:** every Phase-1 legacy seed row is now superseded by a properly-provenanced extractor row across all three states. Final database state:
+
+| State | FY | Status | Source | Records |
+|---|---|---|---|---|
+| TX | 2025 | actual | tx (PEIMS xlsx) | 1,068 |
+| CA | 2025 | actual | ca (SACS .exe) | 472 |
+| FL | 2025 | actual | fl_afr (AFR pdfs) | 67 |
+| FL | 2026 | adopted | fl (Summary Budget pdfs) | 67 |
+
 ### Phase 2 — Calendar research + seed
 
 This phase is mostly research. Do it state-by-state. Don't try to bulk-research all 50 states in one pass.
