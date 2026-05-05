@@ -442,6 +442,18 @@ MI was the next-biggest unimplemented state at 1.34M enrollment. CEPI's FID (Fin
 - Spot check: Detroit Public Schools Community District $1.13B, Dearborn $393M, Utica $383M, Ann Arbor $337M, Grand Rapids $275M — all match expected scale.
 - Idempotent. Registered in `runner/registry.py` with `fy_offset=-2`.
 
+#### VA extractor (2026-05-05) ✅
+
+VA was the next-biggest unimplemented state at 1.26M enrollment. VDOE's Superintendent's Annual Report (the legacy source) returned 403 from our IP/UA via Akamai — site-blocking. Pivoted to **APA's Comparative Report of Local Government Revenues and Expenditures** which is the public-API-equivalent for cross-locality school finance comparison.
+
+- `extractors/va.py` pulls `https://dlasprodpublic.blob.core.windows.net/apa/{GUID}.xlsx`. APA file URLs use opaque GUIDs that change per FY release; `KNOWN_FILE_URLS` map per FY.
+- Topline: Exhibit C col 22 ('Education / Exhibit C-6') — total education expenditures per locality (Instruction + Admin + Pupil Transport + O&M + other education functions).
+- Crosswalk: master `state_leaid` `VA-{3-digit-VDOE-code}` doesn't match APA locality names directly. Built name-matching crosswalk: parse master `lea_name` → strip "City Public Schools" / "County Public Schools" → match against APA locality with section disambiguation (city vs county), since "Fairfax" exists as both a city and a county.
+- Latest published: FY25 (year ended June 30, 2025).
+- Coverage: 101 records inserted of 130 master VA operating LEAs (~78%). 8 unmatched APA localities are mostly **joint city-county school divisions** (Williamsburg-James City County share one division; Covington-Alleghany; Lexington-Rockbridge) where APA reports the locality side but the master uses the joint-division name. 2 are towns (Colonial Beach, West Point). Closing this gap requires a small joint-division override table — queued.
+- Spot check: Fairfax County $3.94B, Loudoun $1.95B, Prince William $1.76B, Virginia Beach $1.08B, Chesterfield $982M — all match expected scale.
+- Idempotent. Registered in `runner/registry.py` with `fy_offset=-2`.
+
 ---
 
 ## 7. Conventions
