@@ -1,7 +1,7 @@
 """Seed `state_calendars` for FY27 (school year 2026-27).
 
-Top-25 states by enrollment as of seed time. Coverage rationale: those 25
-account for ~80% of US K-12 enrollment, so they're the priority targets for
+Top-35 states by enrollment as of seed time. Coverage rationale: those 35
+account for ~90% of US K-12 enrollment, so they're the priority targets for
 Phase 4's "active states" cron gating.
 
 Data sources are the state codes themselves; specific section is in
@@ -437,6 +437,168 @@ ROWS: list[dict] = [
             "revenue actuals known). KDE approves at each stage. School "
             "Facilities Construction Commission has separate review for "
             "capital outlay portions."
+        ),
+    },
+    # ------------------------------------------------------------------
+    # Rank 26-35 — pushes coverage to ~90% US K-12 enrollment
+    # ------------------------------------------------------------------
+    {
+        "state_postal": "AZ",
+        "fiscal_year": FISCAL_YEAR,
+        "proposed_window_start": "2026-06-01",
+        # Proposed budget by July 5; adoption by July 15
+        "proposed_window_end": "2026-07-05",
+        "adoption_deadline": "2026-07-15",
+        "oversight_review_deadline": None,
+        "statute_citation": "A.R.S. § 15-905",
+        "notes": (
+            "Proposed budget published by July 5; adoption by July 15 after "
+            "public hearing. Truth in Taxation hearing required if levy "
+            "increases (§ 15-905.01). ADE collects via APOR / AFR; State "
+            "Board of Education involvement for charters."
+        ),
+    },
+    {
+        "state_postal": "UT",
+        "fiscal_year": FISCAL_YEAR,
+        "proposed_window_start": "2026-05-01",
+        "proposed_window_end": "2026-06-22",
+        "adoption_deadline": "2026-06-22",
+        "oversight_review_deadline": None,
+        "statute_citation": "Utah Code § 53G-7-302, § 53G-7-303",
+        "notes": (
+            "Tentative budget by June 1; final adoption by June 22 (within "
+            "30 days of state aid certification). Truth in Taxation hearing "
+            "in August if revenue exceeds certified rate (§ 59-2-919). USBE "
+            "compiles via UPEFS."
+        ),
+    },
+    {
+        "state_postal": "LA",
+        "fiscal_year": FISCAL_YEAR,
+        "proposed_window_start": "2026-06-01",
+        # Adopted by Sept 15 — AFTER fiscal year start (unusual)
+        "proposed_window_end": "2026-09-15",
+        "adoption_deadline": "2026-09-15",
+        "oversight_review_deadline": None,
+        "statute_citation": "La. R.S. § 39:1301 et seq. (Local Government Budget Act); R.S. § 17:88",
+        "notes": (
+            "73 parishes (LEAs). Districts may operate on prior-year "
+            "appropriation between July 1 fiscal year start and Sept 15 "
+            "adoption. Public hearing with at least 10 days' notice. "
+            "Louisiana Legislative Auditor reviews compliance. LDE compiles "
+            "via Annual Financial Report."
+        ),
+    },
+    {
+        "state_postal": "OR",
+        "fiscal_year": FISCAL_YEAR,
+        "proposed_window_start": "2026-04-01",
+        # Budget committee + board adoption typically by mid-June
+        "proposed_window_end": "2026-06-30",
+        "adoption_deadline": "2026-06-30",
+        "oversight_review_deadline": None,
+        "statute_citation": "ORS § 294.305 to § 294.476 (Local Budget Law)",
+        "notes": (
+            "Two-step Local Budget Law: budget officer drafts → budget "
+            "committee (board + equal lay members) approves → board adopts "
+            "by June 30 after public hearing. ODE compiles via SD2 / NCES "
+            "submissions. ESDs run a parallel cycle."
+        ),
+    },
+    {
+        "state_postal": "IA",
+        "fiscal_year": FISCAL_YEAR,
+        "proposed_window_start": "2026-03-01",
+        # IA shifted to April 30 from March 15 (recent)
+        "proposed_window_end": "2026-04-30",
+        "adoption_deadline": "2026-04-30",
+        "oversight_review_deadline": None,
+        "statute_citation": "Iowa Code § 24.1 et seq. (Local Budget Law); § 257 (school finance formula)",
+        "notes": (
+            "Adoption by April 30 (was March 15 historically; statute "
+            "amended). Budget summary published in newspaper at least 10 "
+            "days before adoption. Filed with state auditor. IA DE compiles "
+            "via Certified Annual Report."
+        ),
+    },
+    {
+        "state_postal": "AR",
+        "fiscal_year": FISCAL_YEAR,
+        "proposed_window_start": "2026-07-01",
+        # Adopted by Sept 15 (after FY start) — like LA
+        "proposed_window_end": "2026-09-15",
+        "adoption_deadline": "2026-09-15",
+        "oversight_review_deadline": None,
+        "statute_citation": "Ark. Code § 6-13-624, § 6-20-401",
+        "notes": (
+            "Adoption by Sept 15 after public hearing. Districts may operate "
+            "on prior-year appropriation Jul 1 – Sept 15. ADE reviews via "
+            "APSCN financial system. Special school districts and county "
+            "districts have separate frameworks."
+        ),
+    },
+    {
+        "state_postal": "NV",
+        "fiscal_year": FISCAL_YEAR,
+        "proposed_window_start": "2026-03-01",
+        "proposed_window_end": "2026-05-15",
+        "adoption_deadline": "2026-05-15",
+        # Department of Taxation approval
+        "oversight_review_deadline": "2026-06-01",
+        "statute_citation": "N.R.S. § 354 (Local Government Budget); § 387 (school finance)",
+        "notes": (
+            "17 county-based districts plus charter LEAs. Tentative budget "
+            "by April 15; adopted by May 15 (third Thursday in May per "
+            "§ 354.598). Department of Taxation reviews and approves. NDE "
+            "compiles via NPRS."
+        ),
+    },
+    {
+        "state_postal": "KS",
+        "fiscal_year": FISCAL_YEAR,
+        "proposed_window_start": "2026-07-01",
+        "proposed_window_end": "2026-08-25",
+        "adoption_deadline": "2026-08-25",
+        "oversight_review_deadline": None,
+        "statute_citation": "K.S.A. § 72-5142 (school budget); § 79-2925 (Cash Basis Law)",
+        "notes": (
+            "Adoption by Aug 25 after public hearing with 10 days' notice. "
+            "Filed with county clerk. Kansas Department of Administration "
+            "Division of Accounts and Reports collects. KSDE compiles via "
+            "ELI / state aid system."
+        ),
+    },
+    {
+        "state_postal": "CT",
+        "fiscal_year": FISCAL_YEAR,
+        "proposed_window_start": "2026-02-01",
+        "proposed_window_end": "2026-06-30",
+        "adoption_deadline": "2026-07-01",
+        # Town meeting / city council appropriation
+        "oversight_review_deadline": "2026-06-30",
+        "statute_citation": "Conn. Gen. Stat. § 10-222 (BOE budget); § 7-340 et seq. (municipal)",
+        "notes": (
+            "165 LEAs (towns + Regional School Districts + state-administered). "
+            "BOE proposes → town/city legislative body appropriates → BOE "
+            "adopts within appropriation. Process timing varies by town "
+            "charter (some have spring referendum, others legislative "
+            "council). CSDE compiles via ED-001."
+        ),
+    },
+    {
+        "state_postal": "MS",
+        "fiscal_year": FISCAL_YEAR,
+        "proposed_window_start": "2026-06-01",
+        "proposed_window_end": "2026-08-15",
+        "adoption_deadline": "2026-08-15",
+        "oversight_review_deadline": None,
+        "statute_citation": "Miss. Code § 37-61-9, § 27-39-329",
+        "notes": (
+            "Adoption by Aug 15 after public hearing. Some districts have "
+            "separate municipal/county appropriation. State Auditor compliance "
+            "review; MDE compiles via Annual Financial Report. Consolidated "
+            "school districts (state takeovers) have parallel process."
         ),
     },
 ]

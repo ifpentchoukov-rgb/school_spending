@@ -262,7 +262,12 @@ Sources to check (incomplete):
 
 Aim for 10 states per session. The full table can take a week of part-time work.
 
-**Acceptance:** at least 15 of the largest-enrollment states have calendar rows with cited statutes. Document in the row's `notes` field anything ambiguous. ✅ **Met and exceeded (2026-05-05):** 25 states seeded, covering **82.6% of US K-12 enrollment** (37M / 45M). Top-15: TX, CA, FL, NY, GA, PA, OH, NC, MI, VA, IL, WA, NJ, IN, TN. Rank 16-25: MD, MO, CO, MN, MA, SC, WI, AL, OK, KY.
+**Acceptance:** at least 15 of the largest-enrollment states have calendar rows with cited statutes. Document in the row's `notes` field anything ambiguous. ✅ **Met and exceeded (2026-05-05):** 35 states seeded, covering **94.4% of US K-12 enrollment**.
+- Top-15: TX, CA, FL, NY, GA, PA, OH, NC, MI, VA, IL, WA, NJ, IN, TN.
+- Rank 16-25: MD, MO, CO, MN, MA, SC, WI, AL, OK, KY.
+- Rank 26-35: AZ, UT, LA, OR, IA, AR, NV, KS, CT, MS.
+
+Remaining states (NE, ID, NM, WV, HI, ME, NH, RI, MT, ND, SD, AK, DE, VT, WY, DC) collectively account for <6% of enrollment; can be added when an extractor for one is built.
 
 **Verifier tasks remaining:**
 1. Dates marked as "best-estimate" in the notes column should be confirmed by a human against the SEA / state code before Phase 4 cron logic relies on them.
