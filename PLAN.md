@@ -196,18 +196,27 @@ Each phase has explicit acceptance criteria. Don't move on until current phase p
 
 **Acceptance:** authenticated user can read all districts via the Supabase Studio table editor; service role can insert into budget_events; counts match expectations. ✅ All met.
 
-### Phase 1.5 — Refresh FY2026 actuals (TX/CA/FL)
+### Phase 1.5 — First DB-aware extractor: FL FY26 adopted budgets
 
-The legacy Step 2 extractors pulled FY25 actuals (school year 2024-25). We now want a true 3-year compare once FY27 budgets land: **FY25 actual → FY26 actual → FY27 adopted**. Re-run the Step 2 extractor logic against the newer data sources for the three already-supported states.
+**Reality check (2026-05-04):** the original "refresh FY26 actuals" plan was unworkable. FY26 actuals don't publish until Jan–April 2027 across TX/CA/FL. Confirmed: TEA PEIMS latest is 2024-25; CDE SACS latest is 2024-25; FLDOE AFR latest is 2024-25.
 
-- [ ] Confirm sources have FY26 data published (TEA PEIMS 2025-26 typically posts April–June; SACS 2025-26 by Jan; FLDOE Statistical Brief by spring)
-- [ ] Refactor Step 2 extractors to take a `fiscal_year` parameter or run a one-off pull script
-- [ ] Insert FY26 actuals as `budget_events` with `fiscal_year=2026, status='actual'`, real `source_documents` rows (these are the first non-legacy records, so they get full provenance: PDF/Excel hash, Storage path, page reference)
-- [ ] Backfill `prior_year_baseline` on the new FY26 rows from the FY25 rows
+What IS available right now: **FLDOE District Summary Budget portal** publishes ADOPTED budgets after districts file with the state. As of today, FY26 (school year 2025-26) summary budgets are live at `https://www.fldoe.org/file/7507/{County}TotalBUD2526.pdf` for all 67 FL county districts (Miami-Dade modified 2026-02-27). FY27 PDFs (2627) are 404 — they'll appear after the Sept 30 2026 statutory submission deadline.
 
-**Acceptance:** ~1,500+ FY26 actual records in `budget_events` for TX/CA/FL with full source-document references (`storage_path` + `content_hash_sha256` non-null).
+So Phase 1.5 pivots from "FY26 actuals across 3 states" to "first real DB-aware extractor — FL FY26 adopted budgets." This lands the Phase 3 architecture (early), captures real adopted-budget records with full provenance, and gives a pipeline that auto-extracts FY27 the moment FLDOE publishes.
 
-This phase can run in parallel with Phase 2 (calendar research). It does NOT block Phase 3 (extractor refactor) since refactor is the architectural change; Phase 1.5 is a one-shot refresh under the legacy pattern.
+- [ ] Create Supabase Storage bucket `fl` (private)
+- [ ] Build `extractors/_base.py` with shared helpers: hash, upload, source_documents upsert, supersession-aware budget_events insert, extraction_runs logging
+- [ ] Build `extractors/fl.py`: pulls all 67 FL county Summary Budget PDFs from FLDOE, parses General Fund TOTAL APPROPRIATIONS, inserts `budget_events` rows as `fiscal_year=2026, status='adopted'`
+- [ ] Run for `fiscal_year=2026`; verify ~67 records with non-null `storage_path` and `content_hash_sha256` on their source_documents
+- [ ] Backfill `prior_year_baseline` from the FY25 actuals seeded in Phase 1
+
+**Known gaps (deliberate, not blockers):**
+- FLDOE only stores the FINAL adopted budget — proposed/tentative transitions are NOT captured. To track those, we'd need per-district board-portal scraping (BoardDocs etc.) — queued as Phase 6 work.
+- 1 FL operating LEA is not on FLDOE (IDEA Public Schools — a charter that files separately). Documented; not extracted.
+
+**Acceptance:** ~67 FL `adopted` budget_events for `fiscal_year=2026`, all with `source_document_id` pointing to a `source_documents` row that has both `storage_path` (Supabase Storage) and `content_hash_sha256` populated. Re-running the extractor with no source change is a no-op.
+
+**Status (2026-05-04): ✅ DONE.** All 67 FL counties matched and extracted on first run. PDFs uploaded to bucket `fl/fy2026/`. `prior_year_baseline` populated for 67/67. Re-run produced 0 changes (idempotent). Two `extraction_runs` logged. Security advisors clean.
 
 ### Phase 2 — Calendar research + seed
 
