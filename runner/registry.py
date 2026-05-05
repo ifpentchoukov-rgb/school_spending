@@ -183,6 +183,15 @@ REGISTRY: list[ExtractorSpec] = [
         fy_offset=0,
         notes="CT OPM Adopted Municipal Budget SoQL API; topline = education_expenditures; town districts only (regional districts TBD)",
     ),
+    # TN
+    ExtractorSpec(
+        state_postal="TN",
+        kind="actuals",
+        module="extractors.tn",
+        # TDOE ASR FY25 published Feb 2026; FY27 calendar maps to FY25 file.
+        fy_offset=-2,
+        notes="TDOE Annual Statistical Report ZIP; topline = Table 51 'TOTAL OPERATING EXPENDITURES'",
+    ),
 ]
 
 
