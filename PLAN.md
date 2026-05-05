@@ -431,6 +431,17 @@ NC was the next-biggest unimplemented state at 1.50M enrollment. After ruling ou
 - Idempotent. Registered in `runner/registry.py` with `fy_offset=-2`.
 - Adopted-budget path NOT covered — NC has no centralized adopted-budget feed; per-district per O.C.G.A. equivalent county-commissioner appropriation process.
 
+#### MI extractor (2026-05-05) ✅
+
+MI was the next-biggest unimplemented state at 1.34M enrollment. CEPI's FID (Financial Information Database) requires milogin and isn't programmatically accessible, but MDE publishes the **Bulletin 1011** Excel annually as the public-facing bulk extract of the same underlying AFR (Form SE-4096) data.
+
+- `extractors/mi.py` pulls `https://mdoe.state.mi.us/SAMSPublic/Reports/others/{NN}_Bulletin1011Export.xlsx`. Filename uses 2-digit FY suffix (`25_` for FY25).
+- Topline: sum of `TOTCUROPEX` (Total Current Operating Expenditure) across all 5 funds per district. Aligned with F-33 'current expenditures' frame.
+- Crosswalk: master `state_leaid` `MI-{5-digit-DCode}` → strip `MI-` → matches Bulletin DCode column directly. Detroit `MI-82015` ↔ Bulletin `82015`.
+- Latest published: FY25 (SY 2024-25). 814 districts in Bulletin 1011 (821 total, 7 had $0 TOTCUROPEX); 603 records inserted of 663 master MI operating LEAs (~91%). 211 Bulletin DCodes unmatched against master (charter LEAs / ISD/RESA entities not in our operating-LEA universe).
+- Spot check: Detroit Public Schools Community District $1.13B, Dearborn $393M, Utica $383M, Ann Arbor $337M, Grand Rapids $275M — all match expected scale.
+- Idempotent. Registered in `runner/registry.py` with `fy_offset=-2`.
+
 ---
 
 ## 7. Conventions

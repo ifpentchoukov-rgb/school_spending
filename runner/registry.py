@@ -121,6 +121,16 @@ REGISTRY: list[ExtractorSpec] = [
         fy_offset=-2,
         notes="NCDPI SPSF Excel; STATE-FUNDED ONLY topline (~55-60% of total operating)",
     ),
+    # MI
+    ExtractorSpec(
+        state_postal="MI",
+        kind="actuals",
+        module="extractors.mi",
+        # MDE Bulletin 1011 published annually after AFR (Form SE-4096)
+        # reconciliation. FY25 published 2026; FY27 calendar maps to FY25.
+        fy_offset=-2,
+        notes="MDE Bulletin 1011 Excel; topline = sum(TOTCUROPEX) across all funds",
+    ),
 ]
 
 
