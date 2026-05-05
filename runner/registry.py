@@ -69,6 +69,16 @@ REGISTRY: list[ExtractorSpec] = [
         fy_offset=-2,
         notes="TEA PEIMS Summarized Financial Data; actuals only — TX has no bulk budget feed",
     ),
+    # IL
+    ExtractorSpec(
+        state_postal="IL",
+        kind="actuals",
+        module="extractors.il",
+        # IL audited actuals lag one more year than TX/CA/FL — latest published
+        # in spring 2026 was FY24 (= our fiscal_year=2024), so offset is -3 from FY27.
+        fy_offset=-3,
+        notes="ISBE OEPP-PCTC bulk Excel; actuals only — adopted-budget Form 50-39 path TBD",
+    ),
 ]
 
 

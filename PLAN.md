@@ -357,7 +357,25 @@ Looked into building an NY adopted-budget extractor since the NY voter-referendu
 - **ST-3 (Annual Financial Report)** — NYSED collects this from districts but does not publish a machine-readable bulk file.
 - **Per-district board portals** — ~690 operating districts, mixed BoardDocs / Diligent / Granicus / custom. Multi-week effort; same problem-space as TX.
 
-**Decision:** Defer NY extractor. The cleanest path forward when we revisit will be either (a) FOIA / direct request to NYSED or NYS Comptroller for the ST-3 / financial-data bulk file, or (b) a per-district BoardDocs scraper template that can be reused for TX, NJ, OH, MA. Captured as Phase 6 work; not blocking any current phase.
+**Decision (2026-05-05):** Defer NY extractor. After deeper investigation:
+- NYSED data downloads (`data.nysed.gov`) — confirmed no bulk financial data
+- NYS Comptroller Socrata datasets on data.ny.gov (7 total, listed under "Office of the State Comptroller") — none are bulk school district budgets; the only school-related dataset is `9pb8-dg53` "NYS School Aid: Beginning 1996-97" which records STATE AID GRANTED (~30-50% of typical operating budget), not the topline
+- NYC Open Data (`data.cityofnewyork.us`) — NYC has school budget datasets but they're stale (last updates 2014-15 or 2019)
+- Census F-33 — has NY but with 2-3 year lag (already what we used for FY23 baseline)
+
+The cleanest path forward when we revisit will be either (a) FOIA / direct request to NYSED or NYS Comptroller for the ST-3 / financial-data bulk file, or (b) a per-district BoardDocs scraper template that can be reused for TX, NJ, OH, MA. Captured as Phase 6 work; not blocking any current phase.
+
+#### IL extractor (2026-05-05) ✅
+
+Pivoted from NY to IL — next-biggest unimplemented state at 1.12M enrollment. ISBE publishes a single bulk Excel `FY{NN}-OEPP-PCTC.xlsx` with **Total Operating Expenditures** per district per fiscal year, matching the actuals topline used for TX/CA/FL.
+
+- `extractors/il.py` pulls `https://www.isbe.net/_layouts/Download.aspx?SourceUrl=/Documents/FY{NN}-OEPP-PCTC.xlsx`
+- Crosswalk: master `state_leaid` `IL-{Region}-{County}-{District}-{Type}` → strip `IL-` and remove hyphens → 11-digit ISBE RCDT.
+- Latest published: FY24 (SY 2023-24) — IL audited actuals lag one year behind TX/CA/FL.
+- Coverage: 380 records inserted of 397 master IL operating LEAs (the 17 unmatched are typically districts that didn't file or that ISBE consolidated). 470 OEPP rows are unmatched K-8/HS-partial entities and cooperatives (not in our operating-LEA universe).
+- Spot check: Chicago Public Schools $7.78B (matches public reporting); SD U-46 $574M; Rockford 205 $454M.
+- Idempotent. Registered in `runner/registry.py` with `fy_offset=-3` (FY27 calendar runs trigger the FY24 fetch).
+- Adopted-budget path (ISBE Form 50-39) NOT covered yet — separate sibling extractor TBD.
 
 ---
 
