@@ -90,6 +90,17 @@ REGISTRY: list[ExtractorSpec] = [
         fy_offset=0,
         notes="PDE General Fund Budget bulk Excel; AFR (actuals) extractor TBD",
     ),
+    # GA
+    ExtractorSpec(
+        state_postal="GA",
+        kind="actuals",
+        module="extractors.ga",
+        # GOSA Revenues_and_Expenditures CSV: latest published Feb 2026
+        # was FY25 (= our fiscal_year=2025). Audited actuals lag two years
+        # behind the FY27 calendar (publishes ~Feb of the year after).
+        fy_offset=-2,
+        notes="GOSA Revenues_and_Expenditures CSV; URL has timestamp suffix — KNOWN_FILE_URLS map per FY",
+    ),
 ]
 
 

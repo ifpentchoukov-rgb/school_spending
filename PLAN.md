@@ -390,6 +390,19 @@ PA was the next-biggest unimplemented state at 1.6M enrollment. PDE publishes a 
 - Idempotent. Registered in `runner/registry.py` with `kind=budget, fy_offset=0` (FY27 calendar runs trigger FY27 GFB fetch directly).
 - AFR (actuals) path NOT investigated — file URL pattern wasn't on the AFR landing page; queued as a sibling extractor TBD.
 
+#### GA extractor (2026-05-05) ✅
+
+GA was the next-biggest unimplemented state at 1.73M enrollment. After GADOE's own portals turned up dead ends (the legacy `app3.doe.k12.ga.us` Oracle web reports only have FY1996-1999), found a clean feed via GOSA — the Governor's Office of Student Achievement republishes GADOE's DE0046 financial data as bulk CSVs.
+
+- `extractors/ga.py` pulls `https://download.gosa.ga.gov/{YEAR}/REVENUES_AND_EXPENDITURES{YYYY-YY}_{TIMESTAMP}.csv`. Filename has a timestamp suffix that's not predictable, so a `KNOWN_FILE_URLS` map per FY plus an index-page-scrape fallback.
+- Crosswalk: master `state_leaid` `GA-{3-digit-code}` → strip `GA-` → matches GOSA `SCHOOL_DSTRCT_CD` directly. Cobb County code 633 in both systems.
+- Topline: sum of `REV_EXP_VALUE` across all 11 expenditure descriptions per district at `DETAIL_LVL_DESC='District'` (Debt Services, General Admin, Instruction, Instructional Support, M&O, Media, Pupil Services, Renovation & Capital Projects, School Admin, Food Services, Transportation).
+- Latest published: FY25 (SY 2024-25) — released Feb 19, 2026.
+- Coverage: 184 records inserted of 192 master GA operating LEAs (~96%). 19 GOSA codes unmatched (charter LEAs / virtual schools / state-operated entities not in our master).
+- Spot check: Gwinnett County $2.55B, Cobb $1.67B, DeKalb $1.59B, Fulton $1.43B, Atlanta Public Schools $1.29B — all match expected scale.
+- Idempotent. Registered in `runner/registry.py` with `fy_offset=-2`.
+- Adopted-budget path NOT covered — districts file by July 1 per O.C.G.A. § 20-2-167 but no clean centralized bulk feed.
+
 ---
 
 ## 7. Conventions
