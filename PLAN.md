@@ -251,10 +251,10 @@ Port the legacy AFR extractor as `extractors/fl_afr.py`. Sibling to `extractors/
 
 This phase is mostly research. Do it state-by-state. Don't try to bulk-research all 50 states in one pass.
 
-- [ ] For each state, identify the statutory budget adoption deadline. Seed a `state_calendars` row.
-- [ ] Identify the *publication* venue for FY27 budgets — is it a centralized SEA portal, a county portal, district websites, board minutes? Note in the row.
-- [ ] Identify the *earliest* date FY27 data is expected to appear in that venue.
-- [ ] Cite the statute or administrative regulation.
+- [x] For each state, identify the statutory budget adoption deadline. Seed a `state_calendars` row — top 15 by enrollment seeded for FY27 in `seeds/seed_state_calendars.py`.
+- [ ] Identify the *publication* venue for FY27 budgets — is it a centralized SEA portal, a county portal, district websites, board minutes? Note in the row. *(Notes field captures this for the top 15; remaining states pending.)*
+- [ ] Identify the *earliest* date FY27 data is expected to appear in that venue. *(Captured implicitly via `proposed_window_start` for the top 15.)*
+- [x] Cite the statute or administrative regulation — done for top 15.
 
 Sources to check (incomplete):
 - For most states: Education Commission of the States policy database; SEA "financial reports" page; state legislative code.
@@ -262,7 +262,9 @@ Sources to check (incomplete):
 
 Aim for 10 states per session. The full table can take a week of part-time work.
 
-**Acceptance:** at least 15 of the largest-enrollment states have calendar rows with cited statutes. Document in the row's `notes` field anything ambiguous.
+**Acceptance:** at least 15 of the largest-enrollment states have calendar rows with cited statutes. Document in the row's `notes` field anything ambiguous. ✅ **Met (2026-05-05):** TX, CA, FL, NY, GA, PA, OH, NC, MI, VA, IL, WA, NJ, IN, TN — covers ~30M of ~50M US K-12 students. Notes flag where dates are best-estimate vs statutory.
+
+**Verifier task remaining:** dates marked as "best-estimate" in the notes column should be confirmed by a human against the SEA / state code before Phase 4 cron logic relies on them. The statute citations themselves were drawn from each state's code; minor section numbers may have moved across recodifications.
 
 ### Phase 3 — Refactor extractors to be DB-aware
 
