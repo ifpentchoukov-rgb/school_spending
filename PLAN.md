@@ -180,20 +180,34 @@ Each phase has explicit acceptance criteria. Don't move on until current phase p
 - [x] Set up Python project structure: `pyproject.toml`, dev dependencies, ruff or black for formatting
 - [x] Confirm Supabase MCP is connected and you can list/create tables — project `school-budget-tracker` (id: `bwkgcofsxubdofklpsaw`, region: `us-east-1`); `list_tables` returns `[]`.
 - [x] Create a `migrations/` directory and the first numbered migration file (empty placeholder is fine) — see `migrations/0000_placeholder.sql`.
-- [x] Stub `.github/workflows/daily.yml` (a no-op job that just prints "hello" to confirm the cron fires) — verifying the cron actually fires requires pushing to GitHub; do that as part of remote setup.
+- [x] Stub `.github/workflows/daily.yml` (a no-op job that just prints "hello" to confirm the cron fires) — confirmed via `workflow_dispatch` on run 25352408081.
 
-**Acceptance:** repo cloneable, dependencies install cleanly, Supabase MCP responds to `list_tables`, GitHub Actions cron runs once successfully. *Status: first three met locally; cron-fires verification pending push to a GitHub remote.*
+**Acceptance:** repo cloneable, dependencies install cleanly, Supabase MCP responds to `list_tables`, GitHub Actions cron runs once successfully. *All four met. Repo: `ifpentchoukov-rgb/school_spending` (public).*
 
 ### Phase 1 — Master schema + seed
 
-- [ ] Write migration creating `districts`, `source_documents`, `extraction_runs`, `budget_events`, `verification_log`, `state_calendars`
-- [ ] Apply via Supabase MCP
-- [ ] Write a seed script that loads `master_districts.csv` into `districts`
-- [ ] Write a seed script that loads existing Step 2 `state_extractions.csv` into `budget_events` (these become FY25 `actual` records — the prior-year baseline for FY27 YoY)
-- [ ] Verify counts match: ~11,880 districts, ~1,607 budget_events
-- [ ] Set up RLS policies as described in §4
+- [x] Write migration creating `districts`, `source_documents`, `extraction_runs`, `budget_events`, `verification_log`, `state_calendars` — `migrations/0001_core_schema.sql`.
+- [x] Apply via Supabase MCP.
+- [x] Write a seed script that loads `master_districts.csv` into `districts` — `seeds/seed_districts.py`, operating-only filter, upsert on `leaid`.
+- [x] Write a seed script that loads existing Step 2 `state_extractions.csv` into `budget_events` as **FY25 `actual` records** (`fiscal_year=2025`, school year 2024-25) — `seeds/seed_legacy_actuals.py`. Three synthetic `source_documents` rows (TX/CA/FL) cover the NOT NULL FK; legacy PDFs intentionally not backfilled.
+- [x] Verify counts: districts=11,880; source_documents=3; budget_events=1,607 (TX 1,068 / CA 472 / FL 67; 2 CA rows skipped for null topline).
+- [x] Set up RLS policies — `migrations/0002_rls_policies.sql`. Anon: read `districts`. Authenticated (currently == verifier): read all + update verification fields on `budget_events` + insert `verification_log`. Service role bypasses. Column-level guard via trigger restricts what verifiers can mutate.
+- [x] Address Supabase advisor findings — `migrations/0003_advisor_fixes.sql` (security_invoker view, search_path on trigger fns, revoked is_verifier RPC, FK indexes). Security lints now empty.
 
-**Acceptance:** authenticated user can read all districts via the Supabase Studio table editor; service role can insert into budget_events; counts match expectations.
+**Acceptance:** authenticated user can read all districts via the Supabase Studio table editor; service role can insert into budget_events; counts match expectations. ✅ All met.
+
+### Phase 1.5 — Refresh FY2026 actuals (TX/CA/FL)
+
+The legacy Step 2 extractors pulled FY25 actuals (school year 2024-25). We now want a true 3-year compare once FY27 budgets land: **FY25 actual → FY26 actual → FY27 adopted**. Re-run the Step 2 extractor logic against the newer data sources for the three already-supported states.
+
+- [ ] Confirm sources have FY26 data published (TEA PEIMS 2025-26 typically posts April–June; SACS 2025-26 by Jan; FLDOE Statistical Brief by spring)
+- [ ] Refactor Step 2 extractors to take a `fiscal_year` parameter or run a one-off pull script
+- [ ] Insert FY26 actuals as `budget_events` with `fiscal_year=2026, status='actual'`, real `source_documents` rows (these are the first non-legacy records, so they get full provenance: PDF/Excel hash, Storage path, page reference)
+- [ ] Backfill `prior_year_baseline` on the new FY26 rows from the FY25 rows
+
+**Acceptance:** ~1,500+ FY26 actual records in `budget_events` for TX/CA/FL with full source-document references (`storage_path` + `content_hash_sha256` non-null).
+
+This phase can run in parallel with Phase 2 (calendar research). It does NOT block Phase 3 (extractor refactor) since refactor is the architectural change; Phase 1.5 is a one-shot refresh under the legacy pattern.
 
 ### Phase 2 — Calendar research + seed
 
