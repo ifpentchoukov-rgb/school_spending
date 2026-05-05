@@ -1,8 +1,8 @@
 """Seed `state_calendars` for FY27 (school year 2026-27).
 
-Top-35 states by enrollment as of seed time. Coverage rationale: those 35
-account for ~90% of US K-12 enrollment, so they're the priority targets for
-Phase 4's "active states" cron gating.
+All 50 states + DC. The first 35 by enrollment cover ~94% of US K-12;
+the remaining 16 add the long tail for completeness so Phase 4 cron logic
+has a calendar row for every jurisdiction it might encounter.
 
 Data sources are the state codes themselves; specific section is in
 `statute_citation`. Where the proposed_window dates are best-estimate rather
@@ -599,6 +599,266 @@ ROWS: list[dict] = [
             "separate municipal/county appropriation. State Auditor compliance "
             "review; MDE compiles via Annual Financial Report. Consolidated "
             "school districts (state takeovers) have parallel process."
+        ),
+    },
+    # ------------------------------------------------------------------
+    # Rank 36-51 — long tail. Brings coverage to all 50 states + DC.
+    # ------------------------------------------------------------------
+    {
+        "state_postal": "NE",
+        "fiscal_year": FISCAL_YEAR,
+        "proposed_window_start": "2026-08-01",
+        "proposed_window_end": "2026-09-20",
+        "adoption_deadline": "2026-09-20",
+        "oversight_review_deadline": None,
+        "statute_citation": "Neb. Rev. Stat. § 13-501 to § 13-513 (Budget Act); § 79-1023",
+        "notes": (
+            "Adopted by Sep 20 (§ 13-506) after public hearing. Filed with "
+            "State Auditor and county clerk. NDE compiles via Nebraska Data "
+            "Solutions. Class IV (Lincoln) and Class V (Omaha) have local "
+            "charter wrinkles."
+        ),
+    },
+    {
+        "state_postal": "ID",
+        "fiscal_year": FISCAL_YEAR,
+        "proposed_window_start": "2026-06-01",
+        "proposed_window_end": "2026-07-15",
+        "adoption_deadline": "2026-07-15",
+        "oversight_review_deadline": None,
+        "statute_citation": "Idaho Code § 33-801, § 33-802",
+        "notes": (
+            "Public hearing in late June; adoption by July 15. SDE compiles "
+            "via Idaho System for Educational Excellence (ISEE). Charter LEAs "
+            "file separately."
+        ),
+    },
+    {
+        "state_postal": "NM",
+        "fiscal_year": FISCAL_YEAR,
+        "proposed_window_start": "2026-04-01",
+        "proposed_window_end": "2026-07-01",
+        "adoption_deadline": "2026-07-01",
+        # PED approval required
+        "oversight_review_deadline": "2026-07-01",
+        "statute_citation": "NMSA § 22-8-6 to § 22-8-11",
+        "notes": (
+            "Tentative budget by April 15 to PED. PED approves operating "
+            "budget for each LEA before July 1. Charters approved separately. "
+            "Reporting via OBMS / Sungard."
+        ),
+    },
+    {
+        "state_postal": "WV",
+        "fiscal_year": FISCAL_YEAR,
+        "proposed_window_start": "2026-06-01",
+        "proposed_window_end": "2026-08-31",
+        "adoption_deadline": "2026-08-31",
+        # WV State BOE approval
+        "oversight_review_deadline": "2026-09-30",
+        "statute_citation": "W. Va. Code § 18-9B-7, § 11-8 (Tax Limitation)",
+        "notes": (
+            "55 county boards of education. Adoption by Aug 31; State BOE "
+            "approves by Sept 30. WVDE compiles via WVEIS. State School "
+            "Building Authority has separate capital review."
+        ),
+    },
+    {
+        "state_postal": "HI",
+        "fiscal_year": FISCAL_YEAR,
+        # State biennium FY26-27 was adopted by HI Legislature May 2025
+        "proposed_window_start": "2025-01-01",
+        "proposed_window_end": "2025-05-31",
+        "adoption_deadline": "2025-07-01",
+        "oversight_review_deadline": None,
+        "statute_citation": "Haw. Rev. Stat. § 302A; Act 230, SLH 2025 (FY26-27 biennial budget)",
+        "notes": (
+            "DATA NOTE: Hawaii has ONE statewide LEA (HIDOE) plus charter "
+            "LEAs. Operating budget set by State Legislature on a biennial "
+            "cycle, not annually by a board. FY27 (school year 2026-27) is "
+            "the second year of the FY26-27 biennium adopted by Act 230 of "
+            "SLH 2025 (Legislature adjourned May 2025). Charter LEAs receive "
+            "per-pupil allocation from this. There is no per-district adoption "
+            "event for FY27 — this row records the legislative cycle for "
+            "completeness."
+        ),
+    },
+    {
+        "state_postal": "ME",
+        "fiscal_year": FISCAL_YEAR,
+        "proposed_window_start": "2026-04-01",
+        # School board adopts; town(s) validate by June referendum
+        "proposed_window_end": "2026-06-30",
+        "adoption_deadline": "2026-06-30",
+        "oversight_review_deadline": "2026-07-15",  # voter validation
+        "statute_citation": "20-A M.R.S. § 1485, § 15689; LD 1 (2003) budget validation",
+        "notes": (
+            "School board adopts; voters validate via budget validation "
+            "referendum (since LD 1 of 2003) — typically a town meeting or "
+            "ballot in June. Some SAUs have opted out via local ordinance. "
+            "DOE compiles via Neo data system."
+        ),
+    },
+    {
+        "state_postal": "SD",
+        "fiscal_year": FISCAL_YEAR,
+        "proposed_window_start": "2026-06-15",
+        "proposed_window_end": "2026-07-15",
+        "adoption_deadline": "2026-07-15",
+        "oversight_review_deadline": None,
+        "statute_citation": "SDCL § 13-11-1 et seq.; § 13-11-2",
+        "notes": (
+            "Adoption by July 15 after public hearing (§ 13-11-2). DOE "
+            "compiles via WebSchoolReport / SD-STARS. County treasurers "
+            "handle property tax collection."
+        ),
+    },
+    {
+        "state_postal": "AK",
+        "fiscal_year": FISCAL_YEAR,
+        "proposed_window_start": "2026-03-01",
+        "proposed_window_end": "2026-05-30",
+        "adoption_deadline": "2026-05-30",
+        # Local fiscal body (city/borough) appropriates per § 14.14.060(c)
+        "oversight_review_deadline": "2026-04-30",
+        "statute_citation": "AS § 14.14.060",
+        "notes": (
+            "LEA submits proposed budget to local fiscal body (city/borough "
+            "assembly) by April 30; assembly appropriates by May 30. School "
+            "board adopts within appropriated amount. REAA (Regional "
+            "Educational Attendance Areas) districts have no local fiscal "
+            "body — fully state-funded. DEED compiles via OASIS."
+        ),
+    },
+    {
+        "state_postal": "RI",
+        "fiscal_year": FISCAL_YEAR,
+        "proposed_window_start": "2026-03-01",
+        "proposed_window_end": "2026-06-30",
+        "adoption_deadline": "2026-06-30",
+        # City/town council appropriation
+        "oversight_review_deadline": "2026-06-30",
+        "statute_citation": "R.I. Gen. Laws § 16-2 (school committee budget); § 45-9 (financial review)",
+        "notes": (
+            "Process varies by city/town charter. School committee proposes; "
+            "city/town council appropriates as part of municipal budget; "
+            "school committee adopts within appropriation. RIDE compiles via "
+            "Uniform Chart of Accounts (UCOA). Regional districts (Chariho, "
+            "Bristol-Warren) have inter-municipal apportionment."
+        ),
+    },
+    {
+        "state_postal": "DE",
+        "fiscal_year": FISCAL_YEAR,
+        "proposed_window_start": "2026-04-01",
+        "proposed_window_end": "2026-06-30",
+        "adoption_deadline": "2026-06-30",
+        "oversight_review_deadline": None,
+        "statute_citation": "14 Del. C. § 1503, § 1504; Title 29 (state appropriations)",
+        "notes": (
+            "Operating largely state-funded via Unit System; districts adopt "
+            "operating budget by June 30. Local current-expense supplement "
+            "requires voter referendum. Vocational and charter LEAs have "
+            "parallel processes. DOE compiles via SDPSCS."
+        ),
+    },
+    {
+        "state_postal": "NH",
+        "fiscal_year": FISCAL_YEAR,
+        # SAU annual meeting in March — town meeting style
+        "proposed_window_start": "2026-01-01",
+        "proposed_window_end": "2026-03-31",
+        "adoption_deadline": "2026-03-15",  # 2nd Tuesday in March
+        "oversight_review_deadline": None,
+        "statute_citation": "N.H. Rev. Stat. § 32 (Municipal Budget Act); § 197 (school district)",
+        "notes": (
+            "Most NH SAUs hold annual meeting on 2nd Tuesday in March (Mar 10, "
+            "2026 for FY27) — voters approve budget at the meeting. SB 2 "
+            "districts use Australian ballot. Charter and cooperative "
+            "districts have variations. DOE compiles via DOE-25."
+        ),
+    },
+    {
+        "state_postal": "ND",
+        "fiscal_year": FISCAL_YEAR,
+        "proposed_window_start": "2026-07-01",
+        "proposed_window_end": "2026-08-15",
+        "adoption_deadline": "2026-08-15",
+        "oversight_review_deadline": None,
+        "statute_citation": "N.D. Cent. Code § 15.1-07 (school district financial mgmt); § 57-15-31.1",
+        "notes": (
+            "Annual budget hearing required (§ 57-15-31.1); adoption by "
+            "Aug 15. Filed with county auditor. DPI compiles via STARS / "
+            "Annual Comprehensive Financial Report."
+        ),
+    },
+    {
+        "state_postal": "WY",
+        "fiscal_year": FISCAL_YEAR,
+        "proposed_window_start": "2026-06-01",
+        "proposed_window_end": "2026-07-31",
+        "adoption_deadline": "2026-07-31",
+        "oversight_review_deadline": None,
+        "statute_citation": "Wyo. Stat. § 16-4-101 to § 16-4-124 (Uniform Municipal Fiscal Procedures Act); § 21-13",
+        "notes": (
+            "48 K-12 districts. Adoption by July 31 after public hearing. "
+            "Largely state-funded via WERBG (Wyoming Education Resource Block "
+            "Grant). WDE compiles via WySTAR / Wyoming Educator Portal."
+        ),
+    },
+    {
+        "state_postal": "VT",
+        "fiscal_year": FISCAL_YEAR,
+        # Town Meeting Day = 1st Tuesday in March
+        "proposed_window_start": "2026-01-01",
+        "proposed_window_end": "2026-03-03",
+        "adoption_deadline": "2026-03-03",
+        # VT State BOE / Act 127 spending threshold
+        "oversight_review_deadline": "2026-03-03",
+        "statute_citation": "16 V.S.A. § 562; 17 V.S.A. § 2664 (Town Meeting Day); Act 127 (2022)",
+        "notes": (
+            "Town Meeting Day (1st Tuesday in March = Mar 3, 2026 for FY27) — "
+            "Australian ballot or floor vote depending on SU/SD. Acts 46/49 "
+            "(2015-2017) consolidated many districts; remaining unmerged "
+            "districts have variations. Act 127 (pupil-weighted formula) "
+            "constrains local spending. AOE compiles via FY3."
+        ),
+    },
+    {
+        "state_postal": "DC",
+        "fiscal_year": FISCAL_YEAR,
+        # DC FY = Oct 1 - Sept 30 (FEDERAL fiscal year, NOT July-June)
+        "proposed_window_start": "2026-03-01",  # Mayor submits to Council in March
+        "proposed_window_end": "2026-06-15",
+        # Council adopts by mid-June; Congress reviews 30 legislative days
+        "adoption_deadline": "2026-06-15",
+        "oversight_review_deadline": "2026-09-30",  # Congressional review
+        "statute_citation": "D.C. Code § 38-2902 (DCPS); § 38-1804.01 (PCSB charter funding); D.C. Home Rule Act § 446",
+        "notes": (
+            "DATA NOTE: DC fiscal year is Oct 1 - Sep 30 (federal FY), NOT "
+            "July-June like all 50 states. master_districts.csv has "
+            "fy_calendar='July-June' for DC; this is incorrect. Mayor submits "
+            "FY27 budget to Council in March 2026; Council adopts by mid-June; "
+            "Congressional 30-legislative-day review under Home Rule Act. "
+            "Two LEAs in our universe: DCPS (state-administered) and the "
+            "PCSB-authorized charter LEAs (each its own LEA). OSSE oversees."
+        ),
+    },
+    {
+        "state_postal": "MT",
+        "fiscal_year": FISCAL_YEAR,
+        "proposed_window_start": "2026-06-01",
+        "proposed_window_end": "2026-08-31",
+        "adoption_deadline": "2026-08-31",
+        "oversight_review_deadline": None,
+        "statute_citation": "MCA § 20-9-101 et seq.; § 20-9-131 (final budget adoption)",
+        "notes": (
+            "Trustees adopt by Aug 31 (§ 20-9-131). County superintendent "
+            "calculates allowable budget. OPI compiles via Annual Trustees "
+            "Financial Summary. NOTE: master_districts.csv shows MT total "
+            "enrollment of ~21k which is far below actual ~150k — there's a "
+            "data gap in our master for MT (likely many small districts "
+            "filtered out by the operating-district criteria)."
         ),
     },
 ]

@@ -262,17 +262,29 @@ Sources to check (incomplete):
 
 Aim for 10 states per session. The full table can take a week of part-time work.
 
-**Acceptance:** at least 15 of the largest-enrollment states have calendar rows with cited statutes. Document in the row's `notes` field anything ambiguous. ✅ **Met and exceeded (2026-05-05):** 35 states seeded, covering **94.4% of US K-12 enrollment**.
+**Acceptance:** at least 15 of the largest-enrollment states have calendar rows with cited statutes. Document in the row's `notes` field anything ambiguous. ✅ **Fully complete (2026-05-05):** **all 50 states + DC seeded — 100% coverage of jurisdictions in `districts`.**
 - Top-15: TX, CA, FL, NY, GA, PA, OH, NC, MI, VA, IL, WA, NJ, IN, TN.
 - Rank 16-25: MD, MO, CO, MN, MA, SC, WI, AL, OK, KY.
 - Rank 26-35: AZ, UT, LA, OR, IA, AR, NV, KS, CT, MS.
+- Rank 36-51 (long tail): NE, ID, NM, WV, HI, ME, SD, AK, RI, DE, NH, ND, WY, VT, DC, MT.
 
-Remaining states (NE, ID, NM, WV, HI, ME, NH, RI, MT, ND, SD, AK, DE, VT, WY, DC) collectively account for <6% of enrollment; can be added when an extractor for one is built.
+**Notable cycles outside the standard "adopt by Jul 1 after public hearing" pattern:**
+- **NY** — voter referendum 3rd Tuesday in May (May 19, 2026 for FY27)
+- **HI** — biennial state legislature, no per-district adoption event
+- **NH/VT** — Town Meeting Day in March; voters approve directly
+- **ME** — school board adopts then voters validate by referendum
+- **DC** — Oct-Sept federal FY; Mayor → Council → 30-day Congressional review
+- **TX/AL** — Sept-Aug or Oct-Sept FY (data-integrity flag below)
+- **LA/AR** — adopt AFTER fiscal year start (Sept 15); prior-year approp bridges
 
 **Verifier tasks remaining:**
 1. Dates marked as "best-estimate" in the notes column should be confirmed by a human against the SEA / state code before Phase 4 cron logic relies on them.
 2. The statute citations themselves came from each state's code; minor section numbers may have moved across recodifications.
-3. **Data integrity issue surfaced:** `master_districts.csv` has `fy_calendar='Sept-Aug'` for AL, but Ala. Code § 16-13-140 actually defines the school fiscal year as Oct 1 – Sept 30 since the 2010 reform (Act 2010-528). Either the legacy seed needs correction, or the schema's `fy_calendar` CHECK constraint needs an `Oct-Sept` value. Flagged in the AL state_calendars row's `notes`.
+3. **Data integrity issues surfaced — schema needs widening:**
+   - `master_districts.csv` has `fy_calendar='Sept-Aug'` for AL, but Ala. Code § 16-13-140 actually defines the school fiscal year as Oct 1 – Sept 30 since the 2010 reform (Act 2010-528).
+   - DC has `fy_calendar='July-June'` in master, but DC operates on the federal Oct 1 – Sep 30 fiscal year (D.C. Home Rule Act § 446).
+   - Schema's `fy_calendar` CHECK constraint allows only `('July-June', 'Sept-Aug')`. Need to add `'Oct-Sept'` and correct AL + DC rows. Migration TBD.
+4. **MT enrollment anomaly:** master shows ~21k for Montana vs actual ~150k. Likely the operating-district filter from Phase-1 is too strict for MT's many small districts. Doesn't affect calendar seeding but worth investigating before running a national rollup.
 
 ### Phase 3 — Refactor extractors to be DB-aware
 
