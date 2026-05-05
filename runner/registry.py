@@ -79,6 +79,17 @@ REGISTRY: list[ExtractorSpec] = [
         fy_offset=-3,
         notes="ISBE OEPP-PCTC bulk Excel; actuals only — adopted-budget Form 50-39 path TBD",
     ),
+    # PA
+    ExtractorSpec(
+        state_postal="PA",
+        kind="budget",
+        module="extractors.pa",
+        # PA GFB filenames use the school year (e.g. 2025-26gfbdata.xlsx for our
+        # fiscal_year=2026). Latest available is the year-in-progress; FY27
+        # GFB will publish around fall 2026 when districts file with PDE.
+        fy_offset=0,
+        notes="PDE General Fund Budget bulk Excel; AFR (actuals) extractor TBD",
+    ),
 ]
 
 

@@ -377,6 +377,19 @@ Pivoted from NY to IL — next-biggest unimplemented state at 1.12M enrollment. 
 - Idempotent. Registered in `runner/registry.py` with `fy_offset=-3` (FY27 calendar runs trigger the FY24 fetch).
 - Adopted-budget path (ISBE Form 50-39) NOT covered yet — separate sibling extractor TBD.
 
+#### PA extractor (2026-05-05) ✅
+
+PA was the next-biggest unimplemented state at 1.6M enrollment. PDE publishes a single bulk Excel `{YYYY-YY}gfbdata.xlsx` (GFB = General Fund Budget) covering all ~500 districts' adopted budgets per fiscal year.
+
+- `extractors/pa.py` pulls `https://www.pa.gov/content/dam/copapwp-pagov/en/education/documents/schools/grants-and-funding/school-finances/finances/gfbdata/{YYYY-YY}gfbdata.xlsx`
+- Crosswalk: master `state_leaid` `PA-{9-digit-AUN}` → strip `PA-` → matches GFB AUN column directly.
+- Topline: `FB_Cert` sheet, `TotalExpAmount` column (certified total adopted operating expenditure budget per district).
+- Latest published: FY26 (SY 2025-26, "2025-2026 Final 11Sep2025") — adopted-budget data publishes about 2-3 months after district adoption per 24 P.S. § 6-687.
+- Coverage: 490 records inserted of 545 master PA operating LEAs (~90%). 5 unmatched AUNs in the GFB (consolidations or charter LEAs not in our master). 50 master PA districts didn't file or aren't in this snapshot.
+- PA total FY26 adopted operating budget: **$39.8B**.
+- Idempotent. Registered in `runner/registry.py` with `kind=budget, fy_offset=0` (FY27 calendar runs trigger FY27 GFB fetch directly).
+- AFR (actuals) path NOT investigated — file URL pattern wasn't on the AFR landing page; queued as a sibling extractor TBD.
+
 ---
 
 ## 7. Conventions
