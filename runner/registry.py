@@ -111,6 +111,16 @@ REGISTRY: list[ExtractorSpec] = [
         fy_offset=-2,
         notes="ODE District Profile (Cupp) Excel; topline = ADM × OEPP",
     ),
+    # NC
+    ExtractorSpec(
+        state_postal="NC",
+        kind="actuals",
+        module="extractors.nc",
+        # NCDPI SPSF Excel publishes around fall after FY close. FY25
+        # published in fall 2025; FY27 calendar maps to the FY25 file in hand.
+        fy_offset=-2,
+        notes="NCDPI SPSF Excel; STATE-FUNDED ONLY topline (~55-60% of total operating)",
+    ),
 ]
 
 

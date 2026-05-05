@@ -416,6 +416,21 @@ OH was the next-biggest unimplemented state at 1.55M enrollment. After ruling ou
 - Idempotent. Registered in `runner/registry.py` with `fy_offset=-2`.
 - Adopted-budget path NOT covered — Ohio's two-stage process (tax budget by Jan 15, permanent appropriation by Oct 1, county budget commission certification) doesn't produce a single bulk download we identified.
 
+#### NC extractor (2026-05-05) ⚠️ partial topline
+
+NC was the next-biggest unimplemented state at 1.50M enrollment. After ruling out the NCDPI Statistical Profile (Oracle APEX behind Cloudflare challenge), the LGC audit data (per-district PDFs only — no bulk feed), and Open Data NC (no school district financial datasets), settled on NCDPI's **SPSF (State Public School Fund) Excel** — published annually around fall after FY close.
+
+- `extractors/nc.py` pulls `https://www.dpi.nc.gov/documents/fbs/{path}/fy{YYYY}spsfbyleabyprcplainenglish-rptxlsx/download?attachment` (path varies slightly by year). `KNOWN_FILE_URLS` map per FY.
+- Topline: aggregated `YTDExpenditures` per LEA across all PRCs from the 'Data Tables' sheet's Key (PRC-LEA) column.
+- Crosswalk: master `state_leaid` `NC-{3-digit-LEA}` → strip `NC-` → matches SPSF LEA suffix directly.
+- Latest published: FY25 (SY 2024-25). 115 LEAs aggregated, 0 unmatched against master (charters NOT in SPSF — NCDPI tracks them separately).
+- Spot check: Wake County $1.21B, Charlotte-Mecklenburg $1.07B, Guilford $520M — about 55-60% of each district's total operating spend (the rest is local appropriation + federal).
+
+⚠️ **TOPLINE LIMITATION:** This is **state-funded only** (~55-60% of total operating). When comparing to TX/CA/FL/IL/GA/OH actuals, NC will appear smaller than its actual size. The full all-funds figure requires LGC per-district audit PDFs — queued as a future Phase 6 follow-up extractor. The `topline_definition` field on every NC record explicitly flags this; verifiers and downstream rollups should respect it.
+
+- Idempotent. Registered in `runner/registry.py` with `fy_offset=-2`.
+- Adopted-budget path NOT covered — NC has no centralized adopted-budget feed; per-district per O.C.G.A. equivalent county-commissioner appropriation process.
+
 ---
 
 ## 7. Conventions
