@@ -403,6 +403,19 @@ GA was the next-biggest unimplemented state at 1.73M enrollment. After GADOE's o
 - Idempotent. Registered in `runner/registry.py` with `fy_offset=-2`.
 - Adopted-budget path NOT covered — districts file by July 1 per O.C.G.A. § 20-2-167 but no clean centralized bulk feed.
 
+#### OH extractor (2026-05-05) ✅
+
+OH was the next-biggest unimplemented state at 1.55M enrollment. After ruling out the Auditor of State portal (no per-district expenditure download for school districts) and the Ohio Checkbook (state agency spending only), found ODE's **Cupp Report** — the District Profile Report Excel published annually around March.
+
+- `extractors/oh.py` pulls `https://education.ohio.gov/getattachment/Topics/Finance-and-Funding/School-Payment-Reports/District-Profile-Reports/FY{NN}-District-Profile-Report/FY{NN}-District-Profile-Report-Final-Revised-{M-DD-YY}-posted.xlsx.aspx?lang=en-US`. Filename includes a "posted" date that's not predictable, so `KNOWN_FILE_URLS` map + index-page-scrape fallback.
+- Topline: `Enrolled ADM FY{NN}` × `Total Operating Expenditure Per Pupil FY{NN}` from the `District Data` sheet. The Cupp Report doesn't expose absolute total spend; multiplying by ADM reconstructs it. Aligned with the F-33 'current expenditures' frame used by TX/CA/FL/IL/GA.
+- Crosswalk: master `state_leaid` `OH-{6-digit-IRN}` → strip `OH-` → matches Cupp `IRN` directly. Akron `OH-043489` ↔ Cupp `043489`.
+- Latest published: FY25 (SY 2024-25) — posted 2026-03-10.
+- Coverage: 606 records inserted of 646 master OH operating LEAs (94%; the 40 missing are typically community schools / charter LEAs not covered by the Cupp Report).
+- Spot check: Columbus City Schools $1.13B, Cleveland Municipal $811M, Cincinnati Public $698M, Toledo City $440M, Akron City $404M — all match expected scale.
+- Idempotent. Registered in `runner/registry.py` with `fy_offset=-2`.
+- Adopted-budget path NOT covered — Ohio's two-stage process (tax budget by Jan 15, permanent appropriation by Oct 1, county budget commission certification) doesn't produce a single bulk download we identified.
+
 ---
 
 ## 7. Conventions

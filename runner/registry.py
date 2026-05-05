@@ -101,6 +101,16 @@ REGISTRY: list[ExtractorSpec] = [
         fy_offset=-2,
         notes="GOSA Revenues_and_Expenditures CSV; URL has timestamp suffix — KNOWN_FILE_URLS map per FY",
     ),
+    # OH
+    ExtractorSpec(
+        state_postal="OH",
+        kind="actuals",
+        module="extractors.oh",
+        # ODE Cupp Report: FY25 published March 2026 — same publication
+        # cadence as the others; FY27 calendar maps to FY25 file in hand.
+        fy_offset=-2,
+        notes="ODE District Profile (Cupp) Excel; topline = ADM × OEPP",
+    ),
 ]
 
 
