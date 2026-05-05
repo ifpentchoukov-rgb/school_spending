@@ -246,7 +246,7 @@ The premise (Phase 1.5+1.7 left us with FY25 actuals across TX/CA/FL and FY26 ad
 
 Each district's BS1 (Budget July 1) submission has exactly one `type='Data'` XLSX file containing UserGL ledger detail. Topline = sum of `Amount` where `ColumnCode='BB' AND FundCode 01-29 AND ObjectCode 1000-7999` (matches the legacy actuals topline definition for direct YoY comparability).
 
-Charter LEAs are skipped on this pass — many share a 7-digit CDS prefix with their authorizer, which would create duplicate matches in the crosswalk. Charter coverage is queued as a follow-up extractor.
+Charter LEAs were initially skipped because, in SACS, charter `cdsCode`s share their first 7 digits with the authorizer's district. The fix: for `entityType='SchoolDistrict'` match by `cdsCode[:7]` (county+district), and for `entityType='CharterSchool'` match by `cdsCode[7:14]` (the SchoolCode portion, which is what NCES uses as the state_leaid suffix for charter LEAs). Both keys are unique within CA, so a single 7-digit-suffix dict handles both — see `cds_lookup_key()` in `extractors/ca_budget.py`. With charters included, SACS entities checked rose from 956 to 2,222 and crosswalk matches from 420 to 637.
 
 ### Phase 1.7 — Close the FL FY25 provenance gap (2026-05-05)
 
@@ -297,11 +297,8 @@ Aim for 10 states per session. The full table can take a week of part-time work.
 **Verifier tasks remaining:**
 1. Dates marked as "best-estimate" in the notes column should be confirmed by a human against the SEA / state code before Phase 4 cron logic relies on them.
 2. The statute citations themselves came from each state's code; minor section numbers may have moved across recodifications.
-3. **Data integrity issues surfaced — schema needs widening:**
-   - `master_districts.csv` has `fy_calendar='Sept-Aug'` for AL, but Ala. Code § 16-13-140 actually defines the school fiscal year as Oct 1 – Sept 30 since the 2010 reform (Act 2010-528).
-   - DC has `fy_calendar='July-June'` in master, but DC operates on the federal Oct 1 – Sep 30 fiscal year (D.C. Home Rule Act § 446).
-   - Schema's `fy_calendar` CHECK constraint allows only `('July-June', 'Sept-Aug')`. Need to add `'Oct-Sept'` and correct AL + DC rows. Migration TBD.
-4. **MT enrollment anomaly:** master shows ~21k for Montana vs actual ~150k. Likely the operating-district filter from Phase-1 is too strict for MT's many small districts. Doesn't affect calendar seeding but worth investigating before running a national rollup.
+3. **Schema widening — DONE (2026-05-05):** `migrations/0006_oct_sept_fiscal_year.sql` added `'Oct-Sept'` to the `fy_calendar` CHECK constraint and corrected 148 AL districts (Sept-Aug → Oct-Sept; Ala. Code § 16-13-140 since 2010 reform) and 6 DC LEAs (July-June → Oct-Sept; federal FY per D.C. Home Rule Act § 446). TX stays Sept-Aug.
+4. **MT enrollment anomaly — INVESTIGATED (2026-05-05):** the legacy NCES extract treats Montana K-8 elementary districts as `agency_level_label='State-level only'` and 9-12 high-school districts as `'State + district level'`, while only K-12 unified districts get `'District-level (operating)'`. Phase 1's filter (`is_operating_district=true` matches only the third category) intentionally excluded the K-8 / 9-12 split because each entity is a partial LEA. Result: 64 K-12-unified districts captured (~21k enrollment) out of ~482 NCES MT records (~155k true enrollment). This is a structural mismatch between NCES's level taxonomy and MT's elementary/HS organization. Fix path: re-run legacy step1 with an MT-specific operating-district rule (include `'State-level only'` and `'State + district level'` types where they have non-zero `enrollment_fy25`). Queued as a Phase 6 prerequisite; doesn't affect FY27 budget tracking until an MT extractor exists.
 
 ### Phase 3 — Refactor extractors to be DB-aware
 
@@ -349,7 +346,18 @@ In priority order based on enrollment coverage and tier:
 5. NJ (~700 LEAs; NJDOE Taxpayers Guide + UEZ)
 6. ... continue per the tier table in `legacy/sd_tracker_step1/state_tiers.py`
 
-For each new state extractor, follow the **"adding a state" template** in §7.
+For each new state extractor, follow the **"adding a state" template" in §7.
+
+#### NY scoping notes (2026-05-05)
+
+Looked into building an NY adopted-budget extractor since the NY voter-referendum date is May 19, 2026 (close to today). Findings:
+
+- **NYSED Data Site** (`data.nysed.gov/downloads.php`) — explicitly publishes no school-district financial data as bulk downloads. Only "Expenditures per Pupil" inside the Report Card; not the topline operating budget.
+- **NYS Comptroller Open Book / findata** — `wwe1.osc.state.ny.us/localgov/findata/index.cfm` returns 404; the historical bulk download path appears to have moved or been retired. The current `osc.ny.gov/local-government/data` page describes downloadable annual financial spreadsheets for local governments but doesn't expose stable file URLs to a fetcher.
+- **ST-3 (Annual Financial Report)** — NYSED collects this from districts but does not publish a machine-readable bulk file.
+- **Per-district board portals** — ~690 operating districts, mixed BoardDocs / Diligent / Granicus / custom. Multi-week effort; same problem-space as TX.
+
+**Decision:** Defer NY extractor. The cleanest path forward when we revisit will be either (a) FOIA / direct request to NYSED or NYS Comptroller for the ST-3 / financial-data bulk file, or (b) a per-district BoardDocs scraper template that can be reused for TX, NJ, OH, MA. Captured as Phase 6 work; not blocking any current phase.
 
 ---
 

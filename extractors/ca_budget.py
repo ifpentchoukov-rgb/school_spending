@@ -121,22 +121,29 @@ def _envelope(data: dict[str, Any], rows: int = 1000) -> dict[str, Any]:
     }
 
 
-def fetch_school_district_entities(ca_fiscal_year: int) -> list[dict[str, Any]]:
-    """Return SchoolDistrict entities for the given caFY. CharterSchool LEAs
-    are intentionally skipped here — many file via the Alternative Form
-    cycle and many share a 7-digit CDS prefix with their authorizer, which
-    introduces duplicate matches in the crosswalk. Charter coverage is
-    queued as a follow-up extractor."""
-    body = _envelope(
-        {"caFiscalYear": ca_fiscal_year, "entityType": "SchoolDistrict"}, rows=2000
-    )
-    resp = _post_json("/api/Entities/Items", body)
-    if resp.get("status") != "Success":
-        raise RuntimeError(f"Entities/Items failed: {resp}")
-    rows = resp["response"]["results"]
-    for r in rows:
-        r["entityType"] = "SchoolDistrict"
-    return rows
+def fetch_entities(
+    ca_fiscal_year: int, entity_types: tuple[str, ...] = ("SchoolDistrict", "CharterSchool")
+) -> list[dict[str, Any]]:
+    """Return SACS entities tagged with their entityType. Each cdsCode is
+    14-digit:
+      - SchoolDistrict: CountyCode(2) + DistrictCode(5) + 0000000
+        — match by cdsCode[:7] against master state_leaid suffix.
+      - CharterSchool:  CountyCode(2) + AuthorizerDistrictCode(5) + SchoolCode(7)
+        — match by cdsCode[7:14] (the 7-digit SchoolCode is what NCES uses
+        as state_leaid for charter LEAs).
+    """
+    out: list[dict[str, Any]] = []
+    for et in entity_types:
+        body = _envelope(
+            {"caFiscalYear": ca_fiscal_year, "entityType": et}, rows=2000
+        )
+        resp = _post_json("/api/Entities/Items", body)
+        if resp.get("status") != "Success":
+            raise RuntimeError(f"Entities/Items failed for {et}: {resp}")
+        for r in resp["response"]["results"]:
+            r["entityType"] = et
+            out.append(r)
+    return out
 
 
 def find_data_artifact(
@@ -195,7 +202,14 @@ def parse_data_extract_topline(
 
 
 def build_ca_crosswalk(client: Client) -> dict[str, dict]:
-    """7-digit CDS district code → district row (state_leaid 'CA-XXXXXXX')."""
+    """7-digit suffix of state_leaid → district row.
+
+    Note: for CA SchoolDistrict LEAs the 7-digit suffix is the County+District
+    portion of the CDS code; for CA CharterSchool LEAs that file as their own
+    LEA, NCES uses the 7-digit SchoolCode portion as state_leaid. Both are
+    unique within CA, so a single dict-by-suffix works for both entity types
+    — we just need to extract the right substring from the SACS cdsCode at
+    match time (see CDS_KEY_BY_TYPE below)."""
     rows = fetch_all(
         client.table("districts")
         .select("leaid, lea_name, state_leaid")
@@ -210,6 +224,15 @@ def build_ca_crosswalk(client: Client) -> dict[str, dict]:
     return out
 
 
+def cds_lookup_key(cds_code: str, entity_type: str) -> str:
+    """Map a 14-digit SACS cdsCode + entityType to the 7-digit master state_leaid suffix."""
+    if entity_type == "SchoolDistrict":
+        return cds_code[:7]
+    if entity_type == "CharterSchool":
+        return cds_code[7:14]
+    return cds_code[:7]  # fall back to district behavior for unknown types
+
+
 def extract(*, fiscal_year: int = 2026, triggered_by: str = "manual",
             limit: int | None = None, sleep_between: float = 0.2) -> dict:
     ca_fy, full_fy = _fy_codes(fiscal_year)
@@ -219,10 +242,13 @@ def extract(*, fiscal_year: int = 2026, triggered_by: str = "manual",
         client = run.client
 
         crosswalk = build_ca_crosswalk(client)
-        print(f"  crosswalk: {len(crosswalk):,} CA operating districts in master")
+        print(f"  crosswalk: {len(crosswalk):,} CA operating LEAs in master")
 
-        entities = fetch_school_district_entities(ca_fy)
-        print(f"  SACS SchoolDistrict entities for caFY {ca_fy}: {len(entities):,}")
+        entities = fetch_entities(ca_fy)
+        sd_count = sum(1 for e in entities if e["entityType"] == "SchoolDistrict")
+        ch_count = sum(1 for e in entities if e["entityType"] == "CharterSchool")
+        print(f"  SACS entities for caFY {ca_fy}: "
+              f"{sd_count:,} SchoolDistrict + {ch_count:,} CharterSchool = {len(entities):,}")
 
         no_match: list[str] = []
         no_artifact: list[str] = []
@@ -230,52 +256,53 @@ def extract(*, fiscal_year: int = 2026, triggered_by: str = "manual",
         api_errors: list[str] = []
         processed = 0
 
-        candidates = []
+        candidates: list[tuple[dict[str, Any], str, dict]] = []
         for ent in entities:
             full_cds = ent["cdsCode"]
-            cds7 = full_cds[:7]  # county+district portion, drop 7-digit school code
-            if cds7 in crosswalk:
-                candidates.append((ent, cds7, crosswalk[cds7]))
+            key = cds_lookup_key(full_cds, ent["entityType"])
+            district = crosswalk.get(key)
+            if district is not None:
+                candidates.append((ent, key, district))
             else:
-                no_match.append(full_cds)
+                no_match.append(f"{ent['entityType']}:{full_cds}")
 
         print(
             f"  matched {len(candidates):,} of {len(entities):,} SACS entities "
-            f"to {len(crosswalk):,} master districts ({len(no_match):,} SACS-only, charters etc.)"
+            f"to {len(crosswalk):,} master LEAs ({len(no_match):,} unmatched)"
         )
         if limit is not None:
             candidates = candidates[:limit]
             print(f"  --limit applied: capping to first {limit} candidates")
 
-        for i, (ent, cds7, district) in enumerate(candidates, start=1):
+        for i, (ent, match_key, district) in enumerate(candidates, start=1):
             full_cds = ent["cdsCode"]
-            label = f"[{i}/{len(candidates)}] {ent['name']} ({cds7})"
+            label = f"[{i}/{len(candidates)}] {ent['name']} ({ent['entityType']} {full_cds})"
             try:
                 art_id, sub_num = find_data_artifact(full_fy, full_cds)
             except Exception as e:
-                api_errors.append(f"{cds7}: {type(e).__name__}: {e}")
+                api_errors.append(f"{match_key}: {type(e).__name__}: {e}")
                 print(f"  {label}  API error on Items: {e}")
                 continue
 
             if art_id is None:
-                no_artifact.append(cds7)
+                no_artifact.append(match_key)
                 continue
 
             try:
                 xlsx = _get_blob(f"/api/SubmissionArtifact/{art_id}/Blob")
             except Exception as e:
-                api_errors.append(f"{cds7}: blob {type(e).__name__}: {e}")
+                api_errors.append(f"{match_key}: blob {type(e).__name__}: {e}")
                 print(f"  {label}  blob error: {e}")
                 continue
 
             topline = parse_data_extract_topline(xlsx, full_fy)
             if topline is None:
-                no_topline.append(cds7)
+                no_topline.append(match_key)
                 continue
 
             content_hash = sha256_bytes(xlsx)
             storage_relpath = (
-                f"fy{fiscal_year}/budget/{cds7}_{sub_num or art_id[:8]}.xlsx"
+                f"fy{fiscal_year}/budget/{full_cds}_{sub_num or art_id[:8]}.xlsx"
             )
 
             existing_src = (
