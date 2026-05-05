@@ -131,6 +131,16 @@ REGISTRY: list[ExtractorSpec] = [
         fy_offset=-2,
         notes="MDE Bulletin 1011 Excel; topline = sum(TOTCUROPEX) across all funds",
     ),
+    # VA
+    ExtractorSpec(
+        state_postal="VA",
+        kind="actuals",
+        module="extractors.va",
+        # APA Comparative Report published annually for FY ending June 30.
+        # FY25 published 2025; FY27 calendar maps to FY25 file in hand.
+        fy_offset=-2,
+        notes="APA Comparative Report Excel; per-locality Education total; opaque GUID URL per FY",
+    ),
 ]
 
 
