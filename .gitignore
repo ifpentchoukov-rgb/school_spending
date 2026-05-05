@@ -45,3 +45,6 @@ htmlcov/
 
 # Local-only exploration / probe scripts (not part of the production codebase)
 scratch/
+
+# Generated artifacts from runner/daily.py — uploaded to CI as artifact, not committed
+daily_summary.md
