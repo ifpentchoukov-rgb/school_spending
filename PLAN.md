@@ -231,6 +231,23 @@ Reuse the Phase-1.5 architecture to migrate the legacy step 2 TX/CA extractors i
 
 **Known gap deferred:** FL FY25 actuals still point at the legacy synthetic `source_documents` row (`legacy:step2:FL`). To upgrade their provenance, build an FL AFR extractor (the legacy `fl.py` AFR pattern) — queued as a follow-up. Doesn't block any current phase.
 
+### Phase 1.8 — Adopted-budget bulk extractors for FY26 (TX gap, CA win)
+
+The premise (Phase 1.5+1.7 left us with FY25 actuals across TX/CA/FL and FY26 adopted for FL only): if the same architecture handles FY26 adopted for TX and CA, we'd have 1,800+ records before the FY27 cycle hits. Investigation revealed an asymmetry:
+
+- **TX**: TEA does **not** publish adopted budgets in bulk. PEIMS only collects actuals; the adopted-budget path requires per-district scraping (~1,069 sites). Same problem-space as NY. Queued for Phase 6.
+- **CA**: CDE migrated SACS Budget data from the old `.exe` downloads to the SACS Data Viewer SPA at https://viewer.sacs-cde.org. Reverse-engineered the API (it's a JSON API behind an Angular shell). Built `extractors/ca_budget.py` against it.
+
+**SACS Data Viewer API discovered (documented in `extractors/ca_budget.py`):**
+- `GET  /api/ReferenceData/ActiveFiscalYears` — fiscal year status
+- `POST /api/Entities/Items` — LEA list per (caFiscalYear, entityType)
+- `POST /api/SubmissionArtifacts/Items` — artifact list per (fullFiscalYear, reportingPeriod, cdsCode)
+- `GET  /api/SubmissionArtifact/{id}/Blob` — binary download
+
+Each district's BS1 (Budget July 1) submission has exactly one `type='Data'` XLSX file containing UserGL ledger detail. Topline = sum of `Amount` where `ColumnCode='BB' AND FundCode 01-29 AND ObjectCode 1000-7999` (matches the legacy actuals topline definition for direct YoY comparability).
+
+Charter LEAs are skipped on this pass — many share a 7-digit CDS prefix with their authorizer, which would create duplicate matches in the crosswalk. Charter coverage is queued as a follow-up extractor.
+
 ### Phase 1.7 — Close the FL FY25 provenance gap (2026-05-05)
 
 Port the legacy AFR extractor as `extractors/fl_afr.py`. Sibling to `extractors/fl.py` (which handles the Summary Budget portal == adopted budgets) — different document, different status (`actual`).

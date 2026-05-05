@@ -42,3 +42,6 @@ dist/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Local-only exploration / probe scripts (not part of the production codebase)
+scratch/
