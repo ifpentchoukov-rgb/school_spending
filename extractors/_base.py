@@ -92,6 +92,21 @@ def sha256_bytes(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
+def fetch_all(query, page_size: int = 1000) -> list[dict]:
+    """Page through a PostgREST query — supabase-py caps a single .execute()
+    at ~1,000 rows. Pass a query builder primed with .select()/.eq()/etc.
+    Calling .range(start, end) yields each page; concatenate."""
+    out: list[dict] = []
+    start = 0
+    while True:
+        page = query.range(start, start + page_size - 1).execute()
+        rows = page.data or []
+        out.extend(rows)
+        if len(rows) < page_size:
+            return out
+        start += page_size
+
+
 def upload_source_document(
     *,
     client: Client,

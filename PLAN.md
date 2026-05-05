@@ -218,6 +218,19 @@ So Phase 1.5 pivots from "FY26 actuals across 3 states" to "first real DB-aware 
 
 **Status (2026-05-04): ✅ DONE.** All 67 FL counties matched and extracted on first run. PDFs uploaded to bucket `fl/fy2026/`. `prior_year_baseline` populated for 67/67. Re-run produced 0 changes (idempotent). Two `extraction_runs` logged. Security advisors clean.
 
+### Phase 1.6 — Port TX & CA to the DB-aware pattern (2026-05-05)
+
+Reuse the Phase-1.5 architecture to migrate the legacy step 2 TX/CA extractors into `extractors/`. These rewrite the FY25 actuals seeded in Phase 1 (currently pointing at synthetic `legacy:step2:*` source_documents) with proper provenance — the bulk Excel/MDB stored in Supabase Storage with SHA-256 hash, and supersession of the legacy seed rows.
+
+- [x] **TX**: pulls TEA PEIMS bulk Excel, parses `ALL FUNDS-TOTAL OPERATING EXPENDITURES BY OBJ` per district. Stored at `tx/fy2025/peims_summarized_financial_data.xlsx`. Re-extracted 1,068 records (= legacy count); 1,068 legacy seed rows superseded. 134 PEIMS districts unmatched (charter LEAs / JJAEPs not in master_districts — same gap as legacy).
+- [x] **CA**: pulls SACS unaudited actuals .exe (43.9 MB) from CDE; unzip → mdb-export → aggregate Object 1000-7999 in Funds 01-29 per (Ccode, Dcode); also processes prior-year .exe in memory for YoY (not stored). Stored at `ca/fy2025/sacs2425.exe`. 472 records; 472 legacy rows superseded. 571 SACS LEAs unmatched (charter/Alt-Form filers — same gap as legacy).
+- [x] Verifier-guard trigger fix (`migrations/0004_fix_verifier_guard.sql`): the original guard from 0002 used the deprecated PostgREST `request.jwt.claim.role` setting, blocking service-role supersession UPDATEs. Switched to `auth.role()`.
+- [x] Pagination helper added to `extractors/_base.py` (`fetch_all`) — supabase-py caps a single `.execute()` at 1,000 rows; without pagination the TX crosswalk silently dropped 69 districts.
+
+**Acceptance:** all three Phase-1 legacy seed states (TX/CA + FL legacy actuals stays as-is for now since FLDOE Summary Budget portal serves *budgets* not actuals; we'd need an AFR extractor to upgrade FL actuals provenance) have idempotent extractors writing to `budget_events` with full source-document provenance. Re-runs are no-ops. ✅
+
+**Known gap deferred:** FL FY25 actuals still point at the legacy synthetic `source_documents` row (`legacy:step2:FL`). To upgrade their provenance, build an FL AFR extractor (the legacy `fl.py` AFR pattern) — queued as a follow-up. Doesn't block any current phase.
+
 ### Phase 2 — Calendar research + seed
 
 This phase is mostly research. Do it state-by-state. Don't try to bulk-research all 50 states in one pass.
