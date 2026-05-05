@@ -1,7 +1,7 @@
 """Seed `state_calendars` for FY27 (school year 2026-27).
 
-Top-15 states by enrollment as of seed time. Coverage rationale: those 15
-account for ~60% of US K-12 enrollment, so they're the priority targets for
+Top-25 states by enrollment as of seed time. Coverage rationale: those 25
+account for ~80% of US K-12 enrollment, so they're the priority targets for
 Phase 4's "active states" cron gating.
 
 Data sources are the state codes themselves; specific section is in
@@ -271,6 +271,172 @@ ROWS: list[dict] = [
             "adopts appropriation typically by July 1. Special school "
             "districts and some city school systems have variations. State "
             "BEP allocations published by Apr 1 inform planning."
+        ),
+    },
+    # ------------------------------------------------------------------
+    # Rank 16-25 — adds ~5M enrollment (cumulative ~80% US coverage)
+    # ------------------------------------------------------------------
+    {
+        "state_postal": "MD",
+        "fiscal_year": FISCAL_YEAR,
+        "proposed_window_start": "2026-02-01",
+        "proposed_window_end": "2026-04-01",
+        # County council appropriates by Jun 1; LEA finalizes by Jul 1
+        "adoption_deadline": "2026-07-01",
+        "oversight_review_deadline": "2026-06-01",
+        "statute_citation": "Md. Code Ann., Educ. § 5-101 to § 5-115",
+        "notes": (
+            "24 LEAs (one per county + Baltimore City). Superintendent "
+            "submits proposed budget to county council/mayor by April 1; "
+            "council appropriates by June 1; LEA adopts final budget after "
+            "appropriation. Baltimore City has a parallel mayoral process."
+        ),
+    },
+    {
+        "state_postal": "MO",
+        "fiscal_year": FISCAL_YEAR,
+        "proposed_window_start": "2026-05-01",
+        "proposed_window_end": "2026-06-30",
+        "adoption_deadline": "2026-07-01",
+        "oversight_review_deadline": None,
+        "statute_citation": "Mo. Rev. Stat. § 67.010, § 165.011",
+        "notes": (
+            "Adoption before fiscal year start (July 1). Public hearing "
+            "required, with at least 10 days' notice. Filed with State "
+            "Auditor; DESE compiles via Annual Secretary of the Board "
+            "Report (ASBR)."
+        ),
+    },
+    {
+        "state_postal": "CO",
+        "fiscal_year": FISCAL_YEAR,
+        "proposed_window_start": "2026-04-01",
+        # Proposed budget submitted to BOE by June 1 (§ 22-44-108)
+        "proposed_window_end": "2026-06-01",
+        "adoption_deadline": "2026-06-30",
+        "oversight_review_deadline": None,
+        "statute_citation": "C.R.S. § 22-44-101 et seq. (School District Budget Law)",
+        "notes": (
+            "Proposed budget filed with board of education by June 1; "
+            "adoption by June 30 after public hearing. Final filed with CDE "
+            "and DLG. December reconciliation amendment common after final "
+            "state aid is set."
+        ),
+    },
+    {
+        "state_postal": "MN",
+        "fiscal_year": FISCAL_YEAR,
+        "proposed_window_start": "2026-05-01",
+        "proposed_window_end": "2026-06-30",
+        "adoption_deadline": "2026-07-01",
+        "oversight_review_deadline": "2026-12-31",  # Truth in Taxation
+        "statute_citation": "Minn. Stat. § 123B.10, § 275.065",
+        "notes": (
+            "Preliminary budget by June 30. Truth in Taxation hearings in "
+            "fall (Nov-Dec) finalize property-tax-funded portions once state "
+            "aid is set. MDE compiles via UFARS. Charter LEAs file separately."
+        ),
+    },
+    {
+        "state_postal": "MA",
+        "fiscal_year": FISCAL_YEAR,
+        "proposed_window_start": "2026-03-01",
+        "proposed_window_end": "2026-06-30",
+        "adoption_deadline": "2026-07-01",
+        "oversight_review_deadline": None,
+        "statute_citation": "M.G.L. c. 71, § 34 (school committees), § 16B (regional districts)",
+        "notes": (
+            "Process varies by district type. Town/city districts: school "
+            "committee proposes; town meeting or city council appropriates "
+            "(spring). Regional districts: assessment apportioned among "
+            "member towns; each town meeting must approve. Adoption typically "
+            "by July 1; DESE collects via End of Year Financial Report."
+        ),
+    },
+    {
+        "state_postal": "SC",
+        "fiscal_year": FISCAL_YEAR,
+        "proposed_window_start": "2026-04-01",
+        "proposed_window_end": "2026-06-30",
+        "adoption_deadline": "2026-06-30",
+        # Some districts have legislative delegation appropriation
+        "oversight_review_deadline": "2026-06-30",
+        "statute_citation": "S.C. Code § 59-21-1010 et seq.",
+        "notes": (
+            "Many SC districts have local enabling acts that govern budget "
+            "adoption (legislative delegation involvement, county council "
+            "appropriation, etc.). 'Districts of the second class' adopt "
+            "via county. Generic statute is the floor; per-district "
+            "verification needed for non-standard arrangements."
+        ),
+    },
+    {
+        "state_postal": "WI",
+        "fiscal_year": FISCAL_YEAR,
+        # WI levy certified by Nov 1; final budget Oct 31
+        "proposed_window_start": "2026-08-01",
+        "proposed_window_end": "2026-10-31",
+        "adoption_deadline": "2026-10-31",
+        "oversight_review_deadline": None,
+        "statute_citation": "Wis. Stat. § 65.90, § 120.12, § 120.18",
+        "notes": (
+            "Annual meeting (typically May or July, depends on district class) "
+            "sets initial tax levy authority. Final budget adopted by Oct 31 "
+            "after Oct 15 state aid certification by DPI. Class of district "
+            "(common, union high, unified) affects timing. DPI collects via "
+            "PI-1505 and SAFR."
+        ),
+    },
+    {
+        "state_postal": "AL",
+        "fiscal_year": FISCAL_YEAR,
+        # AL school FY actually Oct 1 – Sept 30 since 2010 (NOT Sept-Aug)
+        "proposed_window_start": "2026-08-01",
+        "proposed_window_end": "2026-09-15",
+        "adoption_deadline": "2026-09-15",
+        "oversight_review_deadline": None,
+        "statute_citation": "Ala. Code § 16-13-140 to § 16-13-145",
+        "notes": (
+            "DATA NOTE: master_districts.csv has fy_calendar='Sept-Aug' for "
+            "AL, but Ala. Code § 16-13-140 actually defines the school "
+            "fiscal year as Oct 1 - Sept 30 (changed in 2010 by Act 2010-528). "
+            "FY27 = Oct 1, 2026 - Sept 30, 2027. Adoption required before "
+            "fiscal year start with at least one public hearing. Verifier "
+            "should reconcile this discrepancy in master_districts."
+        ),
+    },
+    {
+        "state_postal": "OK",
+        "fiscal_year": FISCAL_YEAR,
+        "proposed_window_start": "2026-06-01",
+        # OK uses estimate of needs filed with county excise board; final
+        # appropriation tied to county tax certification (Oct 1)
+        "proposed_window_end": "2026-09-30",
+        "adoption_deadline": "2026-08-01",
+        "oversight_review_deadline": "2026-10-01",
+        "statute_citation": "Okla. Stat. tit. 70, § 5-150 et seq.; tit. 68, § 3007",
+        "notes": (
+            "Two-stage like OH: districts adopt budget by Aug 1; county "
+            "excise board certifies tax rates / millages by Oct 1. Districts "
+            "may operate on temporary appropriation between July 1 fiscal "
+            "year start and county certification. OSDE collects via OCAS."
+        ),
+    },
+    {
+        "state_postal": "KY",
+        "fiscal_year": FISCAL_YEAR,
+        # Three-stage: tentative (Jan), working (May), final (Sept)
+        "proposed_window_start": "2026-01-01",
+        "proposed_window_end": "2026-09-30",
+        "adoption_deadline": "2026-09-30",
+        "oversight_review_deadline": "2026-09-30",  # KDE approves
+        "statute_citation": "KRS 160.460 (tentative), 160.470 (working/final), 702 KAR 3:246",
+        "notes": (
+            "Three-stage process: tentative by Jan 31 of preceding year, "
+            "working budget by May 30, final budget by Sept 30 (after audited "
+            "revenue actuals known). KDE approves at each stage. School "
+            "Facilities Construction Commission has separate review for "
+            "capital outlay portions."
         ),
     },
 ]

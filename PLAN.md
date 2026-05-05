@@ -262,9 +262,12 @@ Sources to check (incomplete):
 
 Aim for 10 states per session. The full table can take a week of part-time work.
 
-**Acceptance:** at least 15 of the largest-enrollment states have calendar rows with cited statutes. Document in the row's `notes` field anything ambiguous. ✅ **Met (2026-05-05):** TX, CA, FL, NY, GA, PA, OH, NC, MI, VA, IL, WA, NJ, IN, TN — covers ~30M of ~50M US K-12 students. Notes flag where dates are best-estimate vs statutory.
+**Acceptance:** at least 15 of the largest-enrollment states have calendar rows with cited statutes. Document in the row's `notes` field anything ambiguous. ✅ **Met and exceeded (2026-05-05):** 25 states seeded, covering **82.6% of US K-12 enrollment** (37M / 45M). Top-15: TX, CA, FL, NY, GA, PA, OH, NC, MI, VA, IL, WA, NJ, IN, TN. Rank 16-25: MD, MO, CO, MN, MA, SC, WI, AL, OK, KY.
 
-**Verifier task remaining:** dates marked as "best-estimate" in the notes column should be confirmed by a human against the SEA / state code before Phase 4 cron logic relies on them. The statute citations themselves were drawn from each state's code; minor section numbers may have moved across recodifications.
+**Verifier tasks remaining:**
+1. Dates marked as "best-estimate" in the notes column should be confirmed by a human against the SEA / state code before Phase 4 cron logic relies on them.
+2. The statute citations themselves came from each state's code; minor section numbers may have moved across recodifications.
+3. **Data integrity issue surfaced:** `master_districts.csv` has `fy_calendar='Sept-Aug'` for AL, but Ala. Code § 16-13-140 actually defines the school fiscal year as Oct 1 – Sept 30 since the 2010 reform (Act 2010-528). Either the legacy seed needs correction, or the schema's `fy_calendar` CHECK constraint needs an `Oct-Sept` value. Flagged in the AL state_calendars row's `notes`.
 
 ### Phase 3 — Refactor extractors to be DB-aware
 
