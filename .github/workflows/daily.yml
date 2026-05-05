@@ -63,3 +63,41 @@ jobs:
           name: daily-summary-${{ github.run_id }}
           path: daily_summary.md
           retention-days: 30
+
+      - name: Check for repeated extractor failures
+        id: check_failures
+        if: always()
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          set +e
+          python -m runner.check_failures --consecutive 2 > failures.md
+          code=$?
+          set -e
+          cat failures.md
+          if [ "$code" -ne 0 ]; then
+            echo "needs_alert=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "needs_alert=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open / update GitHub Issue on repeated failures
+        if: always() && steps.check_failures.outputs.needs_alert == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          title="Extractor failures detected (auto)"
+          # Reuse an existing open issue with the same title; otherwise create one.
+          existing=$(gh issue list -R "${{ github.repository }}" \
+            --search "in:title \"$title\"" --state open --json number -q '.[0].number' || true)
+          if [ -n "$existing" ]; then
+            echo "appending comment to issue #$existing"
+            gh issue comment "$existing" -R "${{ github.repository }}" --body-file failures.md
+          else
+            echo "opening new issue"
+            gh issue create -R "${{ github.repository }}" \
+              --title "$title" \
+              --body-file failures.md \
+              --label "bug,extractor-failure"
+          fi

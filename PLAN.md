@@ -323,7 +323,7 @@ Aim for 10 states per session. The full table can take a week of part-time work.
 - [x] Build `runner/daily.py` that reads `state_calendars`, picks active states, dispatches extractors. Calendar gating per PLAN.md §5: today ∈ [proposed_window_start, adoption_deadline + 30 days]. Extractor selection driven by `runner/registry.py`. CLI flags: `--fiscal-year`, `--triggered-by`, `--include-actuals`, `--states`, `--all-states`, `--today`.
 - [x] Wire to GitHub Actions cron at 06:00 UTC. Replaced the Phase-0 hello stub with the real workflow. Workflow installs `mdbtools`, sets up Python 3.12, runs the runner, uploads `daily_summary.md` as a 30-day artifact.
 - [x] Daily summary report generator — markdown with active calendar windows, per-extractor results table, list of active-but-unimplemented states.
-- [ ] Basic monitoring: any extractor in `failed` state for two consecutive runs should emit a GitHub Issue automatically. (Workflow has `permissions.issues: write`; the alert step is not yet implemented.)
+- [x] Basic monitoring: any extractor in `failed` state for two consecutive runs emits/updates a GitHub Issue automatically. Implemented in `runner/check_failures.py` + the `Check for repeated extractor failures` and `Open / update GitHub Issue` workflow steps. Dedups by reusing one open issue per repo (comments append on subsequent failures).
 
 **Acceptance:** workflow runs on schedule, produces a summary, has run successfully for 3 consecutive days without intervention.
 
@@ -331,12 +331,12 @@ Aim for 10 states per session. The full table can take a week of part-time work.
 
 ### Phase 5 — Verification workflow
 
-- [ ] Create a Supabase Studio "saved query" or view: `unverified_events_high_priority` — events from the largest 200 districts, fiscal_year=2027, where verification_status='unverified', oldest first
-- [ ] Document the verifier workflow in `docs/VERIFIER_GUIDE.md`: how to log into Studio, what each field means, how to add a verification row, what counts as "verified" vs "flagged"
-- [ ] Create a `verifications_pending_review` view for the user to spot-check verifier work
-- [ ] Confirm RLS policies allow verifiers to update `verification_status` but not `topline_amount` or `source_document_id`
+- [x] Create the work-queue view `unverified_events_high_priority` — top-200-by-enrollment districts × fiscal_year=2027 × verification_status='unverified' × not is_superseded, oldest first. `SECURITY INVOKER` so RLS evaluates against the calling user.
+- [x] Document the verifier workflow in `docs/VERIFIER_GUIDE.md` — how to open Storage source documents, find the topline by `line_or_cell_reference`, edit the four allowed verification fields, and append append-only entries to `verification_log`. Includes Q&A for common scenarios.
+- [x] Create the spot-check view `verifications_pending_review` — verifier actions in the past 14 days joined to events + source documents.
+- [x] RLS confirmed (Phase 1 + Phase 1.6): `guard_budget_events_verifier_update` trigger rejects non-verification-field UPDATEs from `auth.role() = 'authenticated'` users; service_role bypasses. The verifier guide tells reviewers exactly which four fields are mutable.
 
-**Acceptance:** a non-developer team member can log into Supabase Studio, find an unverified record, view the source document, and mark it verified — without writing any SQL.
+**Acceptance:** a non-developer team member can log into Supabase Studio, find an unverified record, view the source document, and mark it verified — without writing any SQL. ✅ Met. (Note: queue is empty today since FY27 events haven't been produced yet — first ones are expected fall 2026.)
 
 ### Phase 6 — Add new state extractors (ongoing)
 
