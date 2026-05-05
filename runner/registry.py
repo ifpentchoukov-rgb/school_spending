@@ -141,6 +141,17 @@ REGISTRY: list[ExtractorSpec] = [
         fy_offset=-2,
         notes="APA Comparative Report Excel; per-locality Education total; opaque GUID URL per FY",
     ),
+    # WA
+    ExtractorSpec(
+        state_postal="WA",
+        kind="actuals",
+        module="extractors.wa",
+        # OSPI F-196 10-year file published Dec of FY-end year. WA fiscal
+        # year is Sept-Aug, so FY25 ended Aug 31, 2025; F-196 published
+        # Dec 2025. FY27 calendar maps to FY25 file in hand.
+        fy_offset=-2,
+        notes="OSPI F-196 10-year XLSX; topline = General Fund EXP by District last column",
+    ),
 ]
 
 

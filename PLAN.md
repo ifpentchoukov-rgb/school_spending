@@ -454,6 +454,19 @@ VA was the next-biggest unimplemented state at 1.26M enrollment. VDOE's Superint
 - Spot check: Fairfax County $3.94B, Loudoun $1.95B, Prince William $1.76B, Virginia Beach $1.08B, Chesterfield $982M — all match expected scale.
 - Idempotent. Registered in `runner/registry.py` with `fy_offset=-2`.
 
+#### WA extractor (2026-05-05) ✅
+
+WA was the next-biggest unimplemented state at 1.08M enrollment. OSPI publishes the **F-196 10-Year Historical Data Detail** Excel annually each December after F-196 reconciliation.
+
+- `extractors/wa.py` pulls `https://ospi.k12.wa.us/sites/default/files/{YYYY-MM}/10_year_f-196_data_{YYYY-YY}.xlsx`. Path includes posting subdirectory; `KNOWN_FILE_URLS` map per FY.
+- Topline: `EXP by District` sheet, last year column ('24-25' for FY25) — General Fund total expenditures per district.
+- Crosswalk: master `state_leaid` `WA-{5-digit-CCDDD}` (e.g. `WA-17001` Seattle) → strip `WA-` → matches F-196 column B directly.
+- Note: WA fiscal year is **Sept 1 – Aug 31** (not July-June like most states), so FY25 = SY 2024-25 ending Aug 31, 2025. F-196 published Dec 2025.
+- Latest published: FY25 (10 years of history in one file).
+- Coverage: 257 records inserted of 258 master WA operating LEAs (~**99.6%**, the cleanest match rate of any state). 64 unmatched F-196 CCDDDs are charter LEAs / state-tribal compact schools / ESDs not in our operating-LEA universe.
+- Spot check: Seattle School District No. 1 $1.14B, Spokane $567M, Tacoma $561M, Lake Washington $544M, Kent $518M — all match expected scale.
+- Idempotent. Registered in `runner/registry.py` with `fy_offset=-2`.
+
 ---
 
 ## 7. Conventions
