@@ -588,6 +588,91 @@ IN was the next-biggest unimplemented state at ~1.0M enrollment. Indiana school 
 - Spot check: Indianapolis Public Schools $572M, Fort Wayne Community $412M, Evansville-Vanderburgh $295M, Hamilton Southeastern $252M, South Bend $242M, Carmel-Clay $207M — all match public reporting.
 - Idempotent. URL needs annual update in `KNOWN_FILE_URLS` when DUAB publishes a 2026-release with CY 2025 (expected mid-2026).
 
+#### MD extractor (2026-05-06) ✅
+
+MD MSDE Local Accountability Branch publishes Selected Financial Data (SFD) annually as a 4-part PDF series. Part 2 'Expenditures' Table 1 has per-LEA expenditure breakdowns derived from district AFRs.
+
+- `extractors/md.py` parses Part 2 PDF page 8 ('Expenditures for All Purposes'); cleans pdfplumber's spurious mid-number spaces with a `(?<![,\d])(\d) (?=[\d,])` regex (collapses leading-digit + space + comma/digit but leaves inter-number spaces intact).
+- Topline: 'Total Current Expense Fund' column — operating-fund expenditures only (excludes capital outlay, food service fund, school construction fund, debt service principal, inter-fund transfers). Aligned with F-33 frame.
+- Crosswalk: name-based; PDF labels are bare county names ('Allegany', 'Anne Arundel', 'Baltimore', 'Baltimore City') — append "County" if not ending with "City", upper-case, match master's "Public Schools"-stripped name.
+- Latest published: SY 2023-2024 (= our `fiscal_year=2024`); registered with `fy_offset=-3`.
+- Coverage: 24 of 24 master MD operating LEAs (100%).
+- Spot check: Montgomery $3.25B, Prince George's $2.71B, Baltimore County $2.11B, Baltimore City $1.82B (correctly disambiguated), Anne Arundel $1.56B, Howard $1.17B — match public reporting.
+- Idempotent.
+
+#### SC extractor (2026-05-06) ✅
+
+SCDE Office of Finance publishes per-district In$ite expenditure reports bundled into 2 alphabetical PDFs per FY (A-G + H-Z+charters). Each district gets one page with a funding-source × category matrix.
+
+- `extractors/sc.py` downloads both bundle PDFs, parses each page's 'Function' total line (= Total Expenditures - Capital - Out-of-District Obligations), and matches the 4-digit Location Code to master state_leaid.
+- Topline: per-page 'Function' total line — F-33-aligned operating spending.
+- Crosswalk: master `state_leaid` `SC-{4-digit}` → PDF Location Code directly.
+- Latest published: FY24; registered with `fy_offset=-3`.
+- Coverage: 73 of 75 master SC operating LEAs (97.3%); 2 unmatched are pre-consolidation Barnwell County and Jasper County codes that the master hasn't been updated to reflect.
+- Spot check: Greenville $948M, Charleston $906M, Horry $730M, Richland 1 $448M — match public reporting.
+- Idempotent.
+
+#### WI extractor (2026-05-06) ✅
+
+WI DPI School Financial Services publishes a 17-FY Comparative Cost Per Member summary XLSX with per-district cost columns repeated per FY.
+
+- `extractors/wi.py` finds the FY=N column block dynamically by scanning row 3 (Abbotsford, the first district), then sums the 7 cost columns (instruct + support + admin + operations + trans + facility + food).
+- Topline: sum of 7 per-FY cost columns. F-33-aligned; matches DPI's published Total Cost figures.
+- Crosswalk: master `WI-{4-digit}` → zfill(CODE, 4) from DATA sheet.
+- Latest published: FY24 (date suffix `20260316`); registered with `fy_offset=-3`. URL pinned per FY in `KNOWN_FILE_URLS` since the date suffix changes.
+- Coverage: 367 of 377 master WI operating LEAs (97.3%); 53 OCAS codes not in master are CESA cooperatives, charter networks, dependent districts.
+- Spot check: Milwaukee $1.70B, Madison $571M, Green Bay $402M, Racine $363M, Kenosha $327M — match public reporting.
+- Idempotent.
+
+#### AL extractor (2026-05-06) ✅
+
+ALSDE LEA Accounting publishes a System Level Per-Pupil Expenditures PDF annually with one page per district showing a funding-source × expenditure-category matrix and a 'Total' summary row.
+
+- `extractors/al.py` walks all PDF pages, extracts the 3-digit district code from the header line and the 'Total' row's grand total (last column).
+- Topline: per-page 'Total' row last column — sum across funding sources × expenditure categories. ALSDE excludes capital outlay and debt service from this PPE report; aligned with F-33 frame.
+- Crosswalk: master `AL-{3-digit}` → PDF system code directly.
+- AL school FY = Oct 1 - Sept 30 (state FY, per migration 0006). Latest publication is FY2023 (Oct 2022 - Sept 2023, PDF dated Aug 2024); registered with `fy_offset=-4` (1 year deeper lag than typical Jul-Jun states).
+- Coverage: 144 of 146 PDF rows (148 master operating LEAs; 2 master LEAs not in PDF for FY23).
+- Spot check: Mobile County $687M, Jefferson County $437M, Baldwin County $406M, Montgomery County $343M, Birmingham City $340M, Huntsville City $290M — match public reporting.
+- Idempotent.
+
+#### OK extractor (2026-05-06) ✅
+
+OSDE OCAS Reporting publishes per-FY ExpenditureSummaryWithExclusions XLSX files (one row per County × District × Fund × Function × Object) on the public state-reports page. The "With Exclusions" variant pre-filters out capital outlay (function 4XXX), debt service (function 5XXX), and inter-fund transfers — aligned with F-33 frame.
+
+- `extractors/ok.py` downloads `ExpenditureSummaryWithExclusions{YYYY}.xlsx`, groups by CountyCode + DistrictCode, sums the Expended column.
+- Topline: sum of `Expended` per (county, district) tuple.
+- Crosswalk: master `OK-{2-digit}-{4-char}` (e.g., `OK-72-I001` Tulsa) → `{CountyCode}-{DistrictCode}` directly.
+- Latest published: FY25 (= SY 2024-25); registered with `fy_offset=-2`. OK is the freshest of this batch (only 6 months old).
+- Coverage: 428 of 428 master OK operating LEAs (100%); 117 OCAS rows for charters, dependent, Common districts not in master operating set.
+- OK total FY25 operating expenditure: **$8.0B**.
+- Spot check: Tulsa $470M, Oklahoma City $425M, Epic Charter Virtual $298M, Edmond $286M, Moore $259M — match public reporting.
+- Idempotent. URL is fully predictable from `fiscal_year`; no `KNOWN_FILE_URLS` map needed.
+
+#### KY extractor (2026-05-06) ✅
+
+KDE Office of Finance publishes a Revenues and Expenditures workbook annually, sourced from district MUNIS (Enterprise ERP) submissions and audited AFRs. The '{YYYY} AFR Expenditures' sheet has Function-coded columns per district.
+
+- `extractors/ky.py` downloads `Revenues and Expenditures {YYYY-YY}.xlsx`; parses '{FY} AFR Expenditures ' sheet (note trailing space in published name).
+- Topline: sum of cols 2-15 (Function 1000-3900 — Instruction through Other Non-Instruction); excludes Facilities (4XXX) and Debt Service (5100). Aligned with F-33 frame.
+- Crosswalk: master `state_leaid` `KY-{9-digit}`; KDE district code = chars 3-5 of the 9-digit suffix (e.g., `KY-001001000` → KDE code '001' Adair County).
+- Latest published: FY24 (SY 2023-24); registered with `fy_offset=-3`.
+- Coverage: 167 of 167 master KY operating LEAs (100%); 4 KDE rows for newer/realigned codes not in master.
+- Spot check: Jefferson County (Louisville) $1.87B, Fayette County (Lexington) $803M, Boone County $285M, Warren County $226M, Hardin County $200M — match public reporting.
+- Idempotent.
+
+#### LA extractor (2026-05-06) ✅
+
+LDOE Office of School System Financial Services publishes the Annual Financial and Statistical Report (AFSR) ZIP annually, with Item 9 (Expenditures) containing per-district breakdowns by category code (E11 instruction subcategories through E52 grand total).
+
+- `extractors/la.py` extracts `AFSR item9 EXP {YYYY}.XLSX` from the ZIP and reads the row where `Category=E52` and `Subcategory=TOT` per district.
+- Topline: `Current_Expenditure` column for the E52 row — F-33-aligned operating spending. LDOE's `Current_Expenditure` already excludes Facility Acquisition (E41) and Debt Service (E51) from `Total_Expenditure`.
+- Crosswalk: master `LA-{3-digit-or-alpha}` → AFSR `Sponsorcd` directly. Aggregate codes like '2-BESE', '4-Type 2', '5-RSD', and 'LA' state-total are skipped (any code containing '-' or equal to 'LA').
+- Latest published: FY24 (SY 2023-24); registered with `fy_offset=-3`.
+- Coverage: 69 of 87 master LA operating LEAs (79.3%); 18 missing master LEAs are Type 2 charter schools that AFSR aggregates into a single '4-Type 2' row (sibling extractor TBD).
+- Spot check: Jefferson Parish $742M, East Baton Rouge $741M, St. Tammany $599M, Caddo $527M, Calcasieu $507M, Lafayette $437M — match public reporting.
+- Idempotent.
+
 ---
 
 ## 7. Conventions

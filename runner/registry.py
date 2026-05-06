@@ -214,6 +214,71 @@ REGISTRY: list[ExtractorSpec] = [
         fy_offset=-3,
         notes="DUAB SCFI Annual Deficit Surplus XLSX; topline = sum Expenditure across operating fund classifications; charters TBD",
     ),
+    # MD
+    ExtractorSpec(
+        state_postal="MD",
+        kind="actuals",
+        module="extractors.md",
+        # MSDE SFD Part 2 PDF, latest is FY24 (SY 2023-24); URL pinned per FY.
+        fy_offset=-3,
+        notes="MSDE Selected Financial Data Part 2 PDF; topline = Table 1 'Total Current Expense Fund' per LEA",
+    ),
+    # SC
+    ExtractorSpec(
+        state_postal="SC",
+        kind="actuals",
+        module="extractors.sc",
+        # SCDE In$ite per-district PDFs (2 alphabetical bundles); FY24 latest.
+        fy_offset=-3,
+        notes="SCDE In$ite per-district PDFs; topline = 'Function' total (Total Exp - Capital - Out-of-District)",
+    ),
+    # WI
+    ExtractorSpec(
+        state_postal="WI",
+        kind="actuals",
+        module="extractors.wi",
+        # DPI Comparative Cost summary; FY24 latest. URL date suffix
+        # changes when DPI republishes; pin per FY in KNOWN_FILE_URLS.
+        fy_offset=-3,
+        notes="DPI Comparative Cost Per Member XLSX; topline = sum 7 cost cols (instruct + support + admin + ops + trans + facility + food)",
+    ),
+    # AL
+    ExtractorSpec(
+        state_postal="AL",
+        kind="actuals",
+        module="extractors.al",
+        # ALSDE FY = Oct-Sept (state FY). FY2023 latest; FY24 expected ~mid-2026.
+        fy_offset=-4,
+        notes="ALSDE System Level Per-Pupil Expenditures PDF; topline = 'Total' row grand total",
+    ),
+    # OK
+    ExtractorSpec(
+        state_postal="OK",
+        kind="actuals",
+        module="extractors.ok",
+        # OSDE OCAS publishes XLSX through SY end year 2025 (= FY25); URL
+        # is fully predictable from fiscal_year (no KNOWN_FILE_URLS map).
+        fy_offset=-2,
+        notes="OSDE OCAS Expenditure Summary (With Exclusions) XLSX; topline = sum Expended per County+District",
+    ),
+    # KY
+    ExtractorSpec(
+        state_postal="KY",
+        kind="actuals",
+        module="extractors.ky",
+        # KDE AFR R&E XLSX; URL fully predictable from fiscal_year.
+        fy_offset=-3,
+        notes="KDE AFR Revenues and Expenditures XLSX; topline = sum Function 1000-3900 per district",
+    ),
+    # LA
+    ExtractorSpec(
+        state_postal="LA",
+        kind="actuals",
+        module="extractors.la",
+        # LDOE AFSR ZIP (Item 9 EXP); URL pinned per FY due to versioning suffix.
+        fy_offset=-3,
+        notes="LDOE AFSR Item 9 Expenditures ZIP; topline = E52 'TOTAL EXPENDITURES' Current_Expenditure column",
+    ),
 ]
 
 
