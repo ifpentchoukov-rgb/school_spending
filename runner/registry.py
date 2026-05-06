@@ -327,6 +327,47 @@ REGISTRY: list[ExtractorSpec] = [
         fy_offset=-3,
         notes="MDE Sup Annual Report Functional Area XLSX; topline = 'Total Current Operational Expenses' col 19",
     ),
+    # ID
+    ExtractorSpec(
+        state_postal="ID",
+        kind="actuals",
+        module="extractors.id_",
+        # ISDE 20-Year R&E XLSX; URL pinned per FY since file name reflects
+        # multi-FY span and is republished annually.
+        fy_offset=-3,
+        notes="ISDE 20-Year R&E XLSX; topline = sum Instruction + Support Services + Non-Instructional from 'FY{N} All Funds Expd' sheet",
+    ),
+    # HI
+    ExtractorSpec(
+        state_postal="HI",
+        kind="actuals",
+        module="extractors.hi",
+        # HI is a single statewide district; AFSA{YYYY}.pdf published fall
+        # of FY-end year. FY27 calendar maps to FY25 (= AFSA2025.pdf).
+        fy_offset=-2,
+        notes="HIDOE AFSA PDF; topline = School-related + State/complex area admin from Statement of Revenues, Expenditures, and Changes in Fund Balances",
+    ),
+    # ME
+    ExtractorSpec(
+        state_postal="ME",
+        kind="actuals",
+        module="extractors.me",
+        # ME DOE Resident Expenditure Totals PDF; FY25 latest published.
+        # Coverage is partial (~55%) because PDF reports per-municipality
+        # (small SAUs) while master uses RSU/MSAD groupings.
+        fy_offset=-2,
+        notes="ME DOE Resident Expenditure Totals PDF; topline = Total - Debt Service per row; partial coverage due to RSU/MSAD granularity mismatch",
+    ),
+    # SD
+    ExtractorSpec(
+        state_postal="SD",
+        kind="actuals",
+        module="extractors.sd",
+        # SD DOE All Expenditures workbook; URL pinned per FY (file name
+        # has FY suffix). FY25 latest published Jan 2026.
+        fy_offset=-2,
+        notes="SD DOE All Expenditures XLSX; topline = General Fund + Special Education Expenditures",
+    ),
 ]
 
 

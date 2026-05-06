@@ -750,6 +750,55 @@ WVDE School Finance Data publishes per-FY data pages; FY25-26 page lists ~30 per
 
 **Decision (2026-05-06):** Defer WV extractor. Path forward: (a) Chrome-MCP automation against the OpenGov transparency portal, (b) authenticated WVDE access (requires WV state credentials), or (c) FOIA WVDE Office of School Finance for the per-county Annual Financial Report bulk data.
 
+#### ID extractor (2026-05-06) ✅
+
+ISDE Public School Finance Division publishes a single 20-Year Revenues & Expenditures workbook with one sheet per FY × {M&O Fund, All Funds} × {Revenues, Expenditures}.
+
+- `extractors/id_.py` reads `2004-2024-Revenues-and-Expenditures.xlsx`, finds 'FY{YYYY} All Funds Expd & by ADA' sheet, sums Instruction + Support Services + Non-Instructional per row.
+- Topline excludes Capital Assets and Debt Services. Aligned with F-33 frame.
+- Crosswalk: master `ID-{3-digit}` → zfill(district_number, 3).
+- Coverage: 136 of 137 master ID operating LEAs (99.3%); FY24; `fy_offset=-3`. 53 unmatched are charters.
+- Spot check: West Ada $383M, Boise $343M, Nampa $155M, Pocatello $142M.
+
+#### HI extractor (2026-05-06) ✅
+
+HI is the only state with a single statewide school district. HIDOE publishes an Annual Financial and Single Audit (AFSA) PDF each fall; the Statement of Revenues, Expenditures, and Changes in Fund Balances – Governmental Funds page (typically p17) has clean per-program totals.
+
+- `extractors/hi.py` parses AFSA{YYYY}.pdf, extracts School-related Total + State/complex area admin Total from the Total column.
+- Excludes Capital outlay and Public libraries. Aligned with F-33 frame.
+- Crosswalk: HI-001 single statewide district.
+- Latest published: AFSA2025.pdf (FY25 = SY 2024-25); registered with `fy_offset=-2`.
+- HI total FY25 operating expenditure: **$3.93B**.
+
+#### ME extractor (2026-05-06) ⚠️ partial
+
+ME DOE Bureau of Finance publishes the 'Resident Expenditures by Budget Category' PDF annually. Each row has 11 categories + Total.
+
+- `extractors/me.py` regex-parses each row's ORG_ID + 12 dollar amounts; topline = Total - Debt Service.
+- Crosswalk: master `ME-{numeric}` → ORG_ID with name-normalized fallback.
+- Coverage: 97 of 177 master ME operating LEAs (~55%); FY25; `fy_offset=-2`.
+- **Granularity mismatch:** PDF reports per-municipality (small SAUs like 'Acton School Department', 'Bar Harbor School Department') while master uses RSU/MSAD groupings ('RSU 11/MSAD 11'). The 80 master-not-in-PDF entries are RSU/MSAD aggregates; the 83 PDF-not-in-master entries are individual member towns. Captured as a follow-up; would need Maine SAU↔RSU consolidation table.
+
+#### SD extractor (2026-05-06) ✅
+
+SD DOE Office of Finance and Management publishes an annual All Expenditures workbook with per-district expenditures by fund (General, Capital Outlay, Special Education).
+
+- `extractors/sd.py` reads `25-AllExpend.xlsx` 'Exp&FB' sheet, sums General Fund/Impact Aid Combined Expenditures + Special Education Expenditures per district.
+- Excludes Capital Outlay (21). Aligned with F-33 frame.
+- Crosswalk: master `SD-{5-digit}` → zfill(district_number, 5).
+- Coverage: 148 of 148 master SD operating LEAs (100%); FY25; `fy_offset=-2`.
+
+#### Deferrals from 2026-05-06 batch (NE, NM, AK, RI, DE, NH) ⏸️
+
+- **NE:** sfos.education.ne.gov SFOS search is per-district interactive ASP.NET WebForms; no bulk export. ~245 districts.
+- **NM:** openbooks.ped.nm.gov reCAPTCHA-gated; no clean bulk API. ~101 districts.
+- **AK:** education.alaska.gov publishes Fund Balance PDFs and ADM/State Aid spreadsheets but no per-district bulk expenditure file. ~52 districts.
+- **RI:** datacenter.ride.ri.gov is Tableau-only (interactive dashboards); UCOA database not exposed as bulk download. ~39 districts.
+- **DE:** Latest published EDSTATS PDF is FY22 (2-year lag); no FY24/FY25 file available yet. ~20 districts.
+- **NH:** education.nh.gov returns Akamai 403 (edgesuite.net CDN block) — same wall pattern as AZ. ~70 districts.
+
+Path forward for all: Chrome-MCP browser automation, FOIA, or wait for fresher publication cadence.
+
 ---
 
 ## 7. Conventions
