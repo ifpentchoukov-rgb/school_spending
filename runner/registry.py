@@ -279,6 +279,54 @@ REGISTRY: list[ExtractorSpec] = [
         fy_offset=-3,
         notes="LDOE AFSR Item 9 Expenditures ZIP; topline = E52 'TOTAL EXPENDITURES' Current_Expenditure column",
     ),
+    # OR
+    ExtractorSpec(
+        state_postal="OR",
+        kind="actuals",
+        module="extractors.or_",
+        # ODE Fiscal Transparency Detailed District Expenditure XLSX; URL is
+        # predictable from fiscal_year (no KNOWN_FILE_URLS map needed).
+        fy_offset=-3,
+        notes="ODE Detailed District Expenditure XLSX; topline = sum ActualExpAmt where FunctionCd[0] in (1,2,3)",
+    ),
+    # IA
+    ExtractorSpec(
+        state_postal="IA",
+        kind="actuals",
+        module="extractors.ia",
+        # Iowa DE CAR multi-sheet XLSX; URL pinned per FY due to media-id suffix.
+        fy_offset=-3,
+        notes="Iowa DE CAR XLSX; topline = sum across {General, Activity, Management, Nutrition} fund Exp data sheets",
+    ),
+    # AR
+    ExtractorSpec(
+        state_postal="AR",
+        kind="actuals",
+        module="extractors.ar",
+        # ADE/DESE Annual Statistical Report PDF; one page per district.
+        fy_offset=-3,
+        notes="ADE/DESE Annual Statistical Report PDF; topline = line 79 'Total Current Expenditures' Actual column",
+    ),
+    # KS
+    ExtractorSpec(
+        state_postal="KS",
+        kind="actuals",
+        module="extractors.ks",
+        # Kansas Open Gov per-pupil CSV (KSDE CPFS source); FY25 latest.
+        # Reconstructs total = per-pupil × master enrollment_fy25.
+        fy_offset=-2,
+        notes="KS Open Gov per-pupil CSV; topline = (Total - Capital - DebtService) per pupil × enrollment_fy25",
+    ),
+    # MS
+    ExtractorSpec(
+        state_postal="MS",
+        kind="actuals",
+        module="extractors.ms",
+        # MDE Sup Annual Report Functional Area XLSX; needs Referer header
+        # to bypass Azure Application Gateway 403.
+        fy_offset=-3,
+        notes="MDE Sup Annual Report Functional Area XLSX; topline = 'Total Current Operational Expenses' col 19",
+    ),
 ]
 
 

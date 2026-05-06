@@ -673,6 +673,83 @@ LDOE Office of School System Financial Services publishes the Annual Financial a
 - Spot check: Jefferson Parish $742M, East Baton Rouge $741M, St. Tammany $599M, Caddo $527M, Calcasieu $507M, Lafayette $437M — match public reporting.
 - Idempotent.
 
+#### OR extractor (2026-05-06) ✅
+
+ODE Fiscal Transparency Unit publishes per-FY Detailed District Expenditure XLSX with one row per district × school × fund × function × object × area-of-responsibility tuple.
+
+- `extractors/or_.py` downloads `{YYYY-YY}%20Actual%20Expenditure%20Data.xlsx` (URL fully predictable from fiscal_year), parses the Detail sheet, and sums ActualExpAmt where FunctionCd's first digit ∈ {1, 2, 3} (Instruction, Support Services, Enterprise / Community Services).
+- Topline excludes Functions 4XXX (Facilities Acquisition) and 5XXX (Other Uses / Debt Service); also effectively excludes Fund 300 (Debt Service) and Fund 400 (Capital Projects). Aligned with F-33 frame.
+- Crosswalk: master `OR-{14-digit zero-padded}` → ODE `Institution_ID` integer (lstrip leading zeros).
+- Coverage: 179 of 184 master OR operating LEAs (97.3%); FY24 = SY 2023-24; `fy_offset=-3`. 31 ODE Institution_IDs not in master are charters / ESDs.
+- Spot check: Portland $993M, Salem-Keizer $736M, Beaverton $666M, North Clackamas $352M, Eugene $352M — match public reporting.
+- Idempotent.
+
+#### IA extractor (2026-05-06) ✅
+
+Iowa DE Bureau of Finance compiles district CARs (Certified Annual Reports) into a single multi-sheet XLSX. ~21 fund-specific data sheets; we sum across the 4 core operating-fund sheets.
+
+- `extractors/ia.py` downloads CAR XLSX (URL pinned per FY due to media-id suffix); parses sheets {GenExpData1, ActExpData1, MgmntExpData1, NutritionExpData1}; sums all numeric expenditure cells (cols 3..N) per row; groups by `district` column.
+- Topline: General Fund + Activity Fund + Management Fund + Nutrition Fund. Excludes Capital Projects, Debt Service, SAVE/PPEL (capital sales-tax + physical-plant), Permanent/Trust (fiduciary), Internal Service (inter-fund), AEA-only sheets. Aligned with F-33 frame.
+- Crosswalk: master `IA-{6-digit} 000` → CAR `district` int = lstrip(state_leaid suffix last 4 chars, '0').
+- Coverage: 325 of 325 master IA operating LEAs (100%); FY24; `fy_offset=-3`. 11 CAR rows are AEAs / specialty institutions not in master.
+- Spot check: Des Moines $1.05B, Cedar Rapids $523M, Davenport $484M, Iowa City $449M, Sioux City $439M — match public reporting.
+- Idempotent.
+
+#### AR extractor (2026-05-06) ✅
+
+ADE/DESE Fiscal Services publishes the Annual Statistical Report PDF annually with one page per LEA — ~400 pages. Each page has a structured form with a numbered "Total Current Expenditures" line.
+
+- `extractors/ar.py` walks all PDF pages; per page extracts the 7-digit LEA code from the header (`LEA: NNNNNNN`) and line 79 `Total Current Expenditures` Actual column.
+- Topline: ASR-defined "Total Current Expenditures" = Total Expenditures − Capital Expenditures − Debt Service. Aligned with F-33 frame.
+- Crosswalk: master `AR-{7-digit}` → PDF LEA code directly.
+- Coverage: 244 of 244 master AR operating LEAs (100%); FY24 = SY 2023-24; `fy_offset=-3`. 27 unmatched are ESCs / charter LEAs not in master.
+- Spot check: Little Rock $330M, Springdale $264M, Bentonville $225M, Rogers $177M, Fort Smith $173M — match public reporting.
+- Idempotent.
+
+#### KS extractor (2026-05-06) ✅
+
+KSDE's primary public Total-Expenditures-by-District page is a 404 and CPFS at datacentral.ksde.gov is interactive-only. **Kansas Open Gov** (operated by Kansas Policy Institute) re-publishes the same KSDE CPFS data as a single multi-year CSV with per-pupil amounts — that's the most reliable bulk pipeline.
+
+- `extractors/ks.py` downloads `Spending-per-Pupil-Database.csv`; for each USD × Year row, computes operating-per-pupil = Total − Capital − DebtService = sum(Instruction, Student Support, Staff Support, Administration, Operations & Maintenance, Transportation, Food Service, Other), and multiplies by master `enrollment_fy25` to recover total dollars.
+- Topline: reconstructed total operating from per-pupil view. F-33-aligned (excludes Capital + Debt). Methodology caveat: per-pupil × enrollment introduces small reconstruction error if master enrollment differs from KSDE's weighted-FTE divisor.
+- Crosswalk: master `KS-D{4-digit}` → CSV `USDNumber` integer.
+- Coverage: 284 of 286 master KS operating LEAs (99.3%); FY25 = SY 2024-25 (freshest in this batch); `fy_offset=-2`. 1 LEA skipped for missing enrollment; 1 USD not in CSV.
+- Spot check: Wichita $792M, Olathe $465M, Kansas City $414M, Shawnee Mission $398M, Blue Valley $350M — match public reporting.
+- Idempotent.
+
+#### MS extractor (2026-05-06) ✅
+
+MDE Office of School Financial Services publishes a per-district Functional Area Expenditure XLSX as part of the Superintendent's Annual Report each fall. The file has a pre-summed `Total Current Operational Expenses` column.
+
+- `extractors/ms.py` downloads `2023-2024-Expenditure-Totals-for-Public-Schools-by-Functional-Area_FINAL.xlsx`; reads col 19 per row.
+- Topline: 'Total Current Operational Expenses' (excludes Capitalized Equipment Expenditures and debt service). F-33-aligned.
+- Crosswalk: master `MS-{4-digit}` → zfill(`Dist No`, 4).
+- MDE Azure Application Gateway requires a `Referer: https://mdek12.org/mbe/superintendent2024/` header for these assets; bare requests return 403.
+- Coverage: 137 of 137 master MS operating LEAs (100%); FY24 = SY 2023-24; `fy_offset=-3`. 11 unmatched MDE codes are charter schools / special state schools not in master.
+- Spot check: DeSoto County $360M, Jackson Public Schools $267M, Rankin County $233M, Madison County $179M, Harrison County $171M — match public reporting.
+- Idempotent.
+
+#### NV scoping notes (2026-05-06) ⏸️ deferred
+
+NV NDE compiles per-LEA NRS 387/388A reports submitted by school districts and charter schools. Findings:
+
+- **Statewide aggregate PDF** (`leg.state.nv.us/.../RTTL_NRS387.303_2024_Statewide_Revised.pdf`) — has summary tables but no per-LEA breakdown; the spreadsheet is interactive (filters by entered LEA number).
+- **Per-LEA PDFs** exist with naming pattern `RTTL_NRS{387.303 or 388A.345}_{YYYY}_{LEA-name}.pdf` — but the directory listing returns 403 and the LEA-name slug is unpredictable (Eagle, Doral, SLAM, Alpine, etc., not matching master).
+- **NV Report Card** (`nevadareportcard.nv.gov`) — Vue.js SPA with no clean export endpoint.
+- **NV OpenBudget** (`openbudget.nv.gov`) — interactive; not bulk-friendly.
+
+**Decision (2026-05-06):** Defer NV extractor. Path forward when revisited: (a) Chrome-MCP automation against Report Card or OpenBudget, (b) per-LEA URL inference once the slug pattern is mapped (would need a one-time crawl from the NDE district directory), or (c) FOIA NDE for the underlying NRS template Excel before the per-LEA filter is applied.
+
+#### WV scoping notes (2026-05-06) ⏸️ deferred
+
+WVDE School Finance Data publishes per-FY data pages; FY25-26 page lists ~30 personnel/salary/FTE XLSX files but no per-county expenditure totals. Findings:
+
+- **WVDE finance/expenditure pages** (`wvde.us/about-us/finance/school-finance/financial-certified-list-reports`, `.../school-finance-data/2023-2024`) all return Drupal `Access Denied` (403) from CLI even with full Chrome headers — restricted to authenticated users or a specific access pattern.
+- **WV Open Gov / WV Checkbook** (`westvirginiadoe.opengov.com`, `stories.opengov.com/westvirginia/`) — JavaScript SPA; saved_view URLs hash to specific selections; no clean account_summary API endpoint.
+- **WVEIS** (`wveis.k12.wv.us`) — district reporting tool, not public bulk data.
+
+**Decision (2026-05-06):** Defer WV extractor. Path forward: (a) Chrome-MCP automation against the OpenGov transparency portal, (b) authenticated WVDE access (requires WV state credentials), or (c) FOIA WVDE Office of School Finance for the per-county Annual Financial Report bulk data.
+
 ---
 
 ## 7. Conventions
