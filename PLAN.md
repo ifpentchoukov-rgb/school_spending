@@ -569,6 +569,12 @@ MA DESE Profiles publishes a statewide Per-Pupil Expenditures (PPX) view that em
 - Spot check: Boston $2.04B, Springfield $749M, Worcester $620M, Lynn $417M, Lowell $378M — match public reporting.
 - Idempotent. Registered with `kind=actuals, fy_offset=-3` (FY27 calendar maps to FY24 file in hand; will auto-flip when FY25 PPX publishes after Dec 2025 EOYR audit cycle).
 
+#### CO scoping notes (2026-05-05) ⏸️ deferred
+
+CO was the next-biggest unimplemented state at ~865k enrollment. CDE Public School Finance Unit publishes a clean Financial Transparency district-level Excel under HB14-1292 — URL pattern is direct (`https://www.cde.state.co.us/cdefinance/ft_fy{NNNN}_distdatafile`) and the file structure was inspected and is excellent (sheet `Org_Spending_Funding`, sum AMOUNT where SPENDING_FUNDING='Spending' and ORG_ROLLUP in ('Learning Environment','Operations') gives a clean F-33-aligned topline). Latest published is FY24 (~$13.9B statewide); FY25 publishes July 1, 2026.
+
+**Decision (2026-05-05):** Defer CO extractor. **Different wall pattern:** unlike NY / AZ / MO / MN where the underlying data is gated behind login walls or interactive analytics tools, **CDE rate-limited our source IP** mid-investigation and stopped accepting connections to `www.cde.state.co.us:443` from this network. The data path itself is clean and the parsing logic is verified against the FY24 file. Path forward when revisited: (a) re-run from a different network or via a residential-IP proxy, (b) wait for the rate-limit window to clear (likely several hours to a day), (c) email CDE School Finance to request whitelisting, or (d) re-attempt with conservative request pacing. No code shipped to the repo; will rebuild from these notes when un-deferred.
+
 ---
 
 ## 7. Conventions
