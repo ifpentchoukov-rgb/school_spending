@@ -825,6 +825,28 @@ OSSE refreshes the DC School Report Card resource library each spring with a `Sc
 - Crosswalk: master `DC-{3-digit}` → zfill(LEA Code, 3).
 - Coverage: 6 of 6 master DC operating LEAs (100%); FY24; `fy_offset=-3`. DCPS $1.45B + 5 large charter networks. 63 unmatched DC LEAs are smaller charter schools not in master operating set.
 
+#### HI adopted-budget extractor (2026-05-06) ✅
+
+Companion to `extractors/hi.py` (actuals). Hawaii sets a biennial budget by State Legislature Act, so the "adopted FY27 budget" exists from May 2025 (Act 250/2025 enacted the FY26-27 biennium) — there's no per-district adoption event because HIDOE is a single statewide entity.
+
+- `extractors/hi_budget.py` parses `budget.hawaii.gov/.../Budget-in-Brief-FY-{YY}-BIB.pdf` (~p86) for the 'Department of Education Operating Budget' table; reads the 'Act 250/2025 FY 2027' baseline column from the 'Total Requirements' row.
+- Topline: $2,861,686,210 for FY27 — sum across all funding sources (general + special + federal + revolving + trust + interdepartmental). Covers full HIDOE department incl Public Library System, EOEL, SFA, PCSC. Excludes Capital Improvement Projects.
+- Crosswalk: HI-001 single statewide district (same as actuals extractor).
+- Registered with `kind=budget, fy_offset=0`. Runner gating triggers immediately during the proposed window (which for HI's biennial cycle is essentially perpetual until the next biennium).
+- **Scope note:** NOT directly comparable to AFSA actuals because BIB scope = full DOE department; AFSA scope = K-12 schools + admin only. AFSA also includes ~$1.07B/year of state-paid 'non-imposed' employee fringe benefits NOT charged to the DOE appropriation. Documented in `topline_definition`.
+
+This is the 5th adopted-budget extractor (after FL, CA, PA, CT) and the only one for a state with a non-July-June fiscal year that adopts via legislature rather than per-district board.
+
+#### Why FY27 adopted-budget data isn't extractable for VT, NH, IA (2026-05-06)
+
+Per the FY27 calendar, four states have already passed their adoption deadline as of today: HI (2025-07-01 biennial), VT (2026-03-03 Town Meeting Day), NH (2026-03-15), IA (2026-04-30). For HI we built `hi_budget.py` (above). For the other three, FY27 adopted-budget data is not extractable now:
+
+- **VT** — Town Meeting Day adoption complete (95 approved, 19 failed, 10 revoting). VT AOE published a state-level FY27 Budget Book at `/document/vermont-agency-education-fy27-budget-book` but it covers AOE's own appropriation + statewide Education Fund — not per-district adopted budgets. Per-district FY27 file (Cohort Spending FY27) won't publish until ~Jan 2028 after FY closes.
+- **NH** — Adoption Mar 15. `education.nh.gov` returns Akamai 403 (same wall as AZ); even the financial-reports landing page is unreachable from CLI. No alternate publication channel found.
+- **IA** — Districts certified to Iowa Department of Management by Apr 30, 2026 (last week). DOM exposes a budget-search at `dom-localgov.iowa.gov/budget-search` (Angular SPA) backed by `/data/api/FormIoReport/*`, but the API returns 401 without authentication. Iowa DE itself only publishes the Certified Annual Report (CAR), which is actuals-only.
+
+**Pattern:** of all 50 states + DC, only **5 states have a real-time adopted-budget pipeline** we can extract from: FL (TRIM), CA (SACS Budget), PA (PDE GFB), CT (OPM SODA API), and now HI (DBF BIB). Everyone else publishes actuals after audit, not adopted budgets. The `state_calendars` adoption-deadline column tracks the legal deadline, not the publication-availability date.
+
 #### MT extractor (2026-05-06) ✅
 
 Montana OPI publishes annual School Expenditures workbook (OPIEXP{YY}.xlsx) with detail rows by County × LE × Fund × Program × Function × Object.

@@ -42,7 +42,7 @@ This file is the running snapshot of which states are live, which are deferred, 
 | KS | ~470k | actual ⚠️ | 2025 | 284/286 (99.3%) | TBD | KS Open Gov per-pupil |
 | MS | ~440k | actual | 2024 | 137/137 (100%) | TBD | MDE Sup Annual Report |
 | ID | 301k | actual | 2024 | 136/137 (99.3%) | TBD | ISDE 20-Year R&E |
-| HI | 167k | actual | 2025 | 1/1 (100%) | $3.93B | HIDOE AFSA (single statewide) |
+| HI | 167k | actual / **adopted** | 2025 / 2027 | 1/1 / 1/1 (100%) | $3.93B / $2.86B | HIDOE AFSA + DBF Budget-in-Brief (biennial) |
 | ME | 160k | actual ⚠️ | 2025 | 97/177 (54.8%) | TBD | ME DOE — RSU/MSAD granularity mismatch |
 | SD | 141k | actual | 2025 | 148/148 (100%) | TBD | SD DOE All Expenditures |
 | ND | 118k | actual | 2024 | 143/143 (100%) | TBD | NDDPI FinFacts PDF |
@@ -72,6 +72,20 @@ This file is the running snapshot of which states are live, which are deferred, 
 ## All states + DC accounted for
 
 51 jurisdictions = 37 live + 14 deferred. Coverage milestone: every state has been investigated and has a documented status.
+
+## Adopted-budget pipelines (5 states)
+
+Most states publish actuals (post-audit), not adopted budgets. These 5 have a real-time adopted-budget pipeline:
+
+| State | Source | Frequency | Notes |
+|---|---|---|---|
+| FL | FLDOE Summary Budget portal (TRIM) | Per-district, near-real-time | 67/68 LEAs FY26 adopted captured |
+| CA | SACS Data Viewer Budget filings | Per-district, post-Aug 15 county review | 426/697 LEAs FY26 adopted |
+| PA | PDE General Fund Budget bulk Excel | Annual, ~Sept after Jun 30 adoption | 490/545 LEAs FY26 adopted |
+| CT | CT OPM Adopted Municipal Budget SoQL API | Real-time per-town | 117/139 LEAs FY26 adopted (date_budget_adopted recorded) |
+| HI | HI DBF Budget-in-Brief PDF | Biennial via legislative act | 1/1 LEA FY27 adopted ($2.86B) — *only state with FY27 budget data so far* |
+
+For VT/NH/IA (deadlines also passed for FY27): publication doesn't follow adoption — VT publishes per-district file post-audit (~Jan 2028); NH site Akamai-blocked; IA DOM API auth-required. Documented in [PLAN.md](../PLAN.md).
 
 ## Open follow-ups (existing extractors)
 

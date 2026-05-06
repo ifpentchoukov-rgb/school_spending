@@ -347,6 +347,16 @@ REGISTRY: list[ExtractorSpec] = [
         fy_offset=-2,
         notes="HIDOE AFSA PDF; topline = School-related + State/complex area admin from Statement of Revenues, Expenditures, and Changes in Fund Balances",
     ),
+    # HI adopted budget — biennial; enacted in Act 250 SLH 2025 (May 2025)
+    ExtractorSpec(
+        state_postal="HI",
+        kind="budget",
+        module="extractors.hi_budget",
+        # HI biennium FY26-27 enacted; BIB-27 published Dec 2025 by Gov Green.
+        # FY27 calendar maps directly to FY27 budget (no offset).
+        fy_offset=0,
+        notes="HI DBF Budget-in-Brief PDF; topline = Act 250/2025 FY27 baseline 'Total Requirements' across all DOE funds (state + federal + revolving)",
+    ),
     # ME
     ExtractorSpec(
         state_postal="ME",
