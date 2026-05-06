@@ -799,6 +799,46 @@ SD DOE Office of Finance and Management publishes an annual All Expenditures wor
 
 Path forward for all: Chrome-MCP browser automation, FOIA, or wait for fresher publication cadence.
 
+#### ND extractor (2026-05-06) ✅
+
+NDDPI School Finance Office publishes School Finance Facts PDF annually each February. Section H 'Rank Order... by Average Cost Per Pupil' has clean per-district ADM and Avg Cost in 2-column layout.
+
+- `extractors/nd.py` walks PDF, regex-matches rows in Section H (3 sub-sections: HS / Graded Elementary / Rural districts), computes ADM × Avg Cost as topline.
+- NDDPI's avg cost definition includes regular instruction + special ed + CTE + federal programs + administration + plant O&M (excludes capital, debt, extracurricular, transportation, all-other).
+- Crosswalk: master `ND-{5-digit}` = `{2-digit county}{3-digit district}` from PDF.
+- Coverage: 143 of 143 master ND operating LEAs (100%); FY24 (= SY 2023-24); `fy_offset=-3`. 24 unmatched are tiny non-K-12-equivalent districts.
+
+#### VT extractor (2026-05-06) ✅
+
+VT AOE publishes a Cohort Spending by School Type XLSX annually showing per-district equalized pupils, budget per equalized pupil, and education spending per equalized pupil.
+
+- `extractors/vt.py` reads sheet `SpendData FY{YY}rpt`; topline = Equalized Pupils × Education Spending per Eq Pupil.
+- VT 'Education Spending' is the F-33-aligned current operating expenditure (excludes capital + debt).
+- Crosswalk: master `VT-{T###|U###}` (Town / Unified Union) → XLSX `LEA` column directly.
+- Coverage: 80 of 80 master VT operating LEAs (100%); FY24; `fy_offset=-3`. 42 unmatched VT LEAs are small SU-only or specialty.
+
+#### DC extractor (2026-05-06) ✅
+
+OSSE refreshes the DC School Report Card resource library each spring with a `School Finance Data ({YEAR}).xlsx` containing per-LEA expenditures across State/Local and Federal sources, both school-level and centralized.
+
+- `extractors/dc.py` reads sheet 'Finance Data'; topline = Aggregate State/Local Expenditures + Total School Level Expenditures Federal + Total School Share of Centralized Expenditures Federal per LEA.
+- Crosswalk: master `DC-{3-digit}` → zfill(LEA Code, 3).
+- Coverage: 6 of 6 master DC operating LEAs (100%); FY24; `fy_offset=-3`. DCPS $1.45B + 5 large charter networks. 63 unmatched DC LEAs are smaller charter schools not in master operating set.
+
+#### MT extractor (2026-05-06) ✅
+
+Montana OPI publishes annual School Expenditures workbook (OPIEXP{YY}.xlsx) with detail rows by County × LE × Fund × Program × Function × Object.
+
+- `extractors/mt.py` reads sheet `ExpByLineItemByLE` (~52k rows in FY25); sums SumOfAmount per LE where FunctionCode starts with '1', '2', or '3' (Instruction + Support Services + Non-Instructional). Excludes Function 4XXX (Capital) and 5XXX (Debt).
+- Crosswalk: master `MT-{4-digit}` (K-12 equivalents only) → XLSX `LE` column directly.
+- Coverage: 64 of 64 master MT operating LEAs (100%); FY25; `fy_offset=-2`. MT has 418 LEs in OPI file but most are elementary-only or HS-only districts not in master operating set.
+
+#### WY scoping notes (2026-05-06) ⏸️ deferred
+
+WDE Transparency / Finance / Data Reports pages are JavaScript-rendered with no bulk download links visible. Underlying data is collected via WDE601 (Annual District Report) but submitted through WINDS portal — not a public bulk download. Only `services.edu.wyoming.gov/PublicAPI/api/FormsInventory` is publicly accessible (form metadata only, not data).
+
+**Decision (2026-05-06):** Defer WY extractor. ~49 districts; ~89k students. Path forward: (a) Chrome-MCP automation against WDE data dashboards, (b) FOIA WDE Finance Unit for the WDE601 bulk extract, or (c) wait for WDE to publish a static per-district expenditure XLSX similar to other states.
+
 ---
 
 ## 7. Conventions

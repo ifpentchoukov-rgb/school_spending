@@ -368,6 +368,44 @@ REGISTRY: list[ExtractorSpec] = [
         fy_offset=-2,
         notes="SD DOE All Expenditures XLSX; topline = General Fund + Special Education Expenditures",
     ),
+    # ND
+    ExtractorSpec(
+        state_postal="ND",
+        kind="actuals",
+        module="extractors.nd",
+        # NDDPI School Finance Facts PDF Section H; topline = ADM × Avg Cost.
+        # 2025 FinFacts has FY24 data; URL pinned per FY.
+        fy_offset=-3,
+        notes="NDDPI FinFacts PDF Section H; topline = ADM × Average Cost Per Pupil",
+    ),
+    # VT
+    ExtractorSpec(
+        state_postal="VT",
+        kind="actuals",
+        module="extractors.vt",
+        # VT AOE Cohort Spending by School Type XLSX; URL pinned per FY.
+        fy_offset=-3,
+        notes="VT AOE Cohort Spending XLSX; topline = Equalized Pupils × Education Spending per Eq Pupil",
+    ),
+    # DC
+    ExtractorSpec(
+        state_postal="DC",
+        kind="actuals",
+        module="extractors.dc",
+        # OSSE School Report Card School Finance Data XLSX; URL pinned per FY.
+        fy_offset=-3,
+        notes="OSSE Report Card School Finance Data XLSX; topline = State/Local Aggregate + Federal school + Federal centralized",
+    ),
+    # MT
+    ExtractorSpec(
+        state_postal="MT",
+        kind="actuals",
+        module="extractors.mt",
+        # OPI School Expenditures (OPIEXP25.xlsx) per-LE detail. FY25
+        # latest published Feb 2026.
+        fy_offset=-2,
+        notes="OPI School Expenditures XLSX; topline = sum where Function code 1XXX/2XXX/3XXX per LE",
+    ),
 ]
 
 
