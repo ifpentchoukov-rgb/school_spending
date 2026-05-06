@@ -575,6 +575,19 @@ CO was the next-biggest unimplemented state at ~865k enrollment. CDE Public Scho
 
 **Decision (2026-05-05):** Defer CO extractor. **Different wall pattern:** unlike NY / AZ / MO / MN where the underlying data is gated behind login walls or interactive analytics tools, **CDE rate-limited our source IP** mid-investigation and stopped accepting connections to `www.cde.state.co.us:443` from this network. The data path itself is clean and the parsing logic is verified against the FY24 file. Path forward when revisited: (a) re-run from a different network or via a residential-IP proxy, (b) wait for the rate-limit window to clear (likely several hours to a day), (c) email CDE School Finance to request whitelisting, or (d) re-attempt with conservative request pacing. No code shipped to the repo; will rebuild from these notes when un-deferred.
 
+#### IN extractor (2026-05-06) ✅
+
+IN was the next-biggest unimplemented state at ~1.0M enrollment. Indiana school corporations file Annual Financial Reports via the DLGF Gateway; DUAB (Distressed Unit Appeal Board) re-publishes a curated subset as the School Corporation Fiscal Indicators (SCFI) dataset on the Indiana Management Performance Hub under IC 20-19-7. SCFI's "Annual Deficit Surplus" sheet has explicit `Expenditure` per fund per CY, classified by `Fund Classification` — letting us isolate operating spending without scraping Gateway's per-row disbursements directly.
+
+- `extractors/in_.py` (underscore-suffixed because `in` is a Python keyword) downloads the SCFI Annual Deficit Surplus XLSX via `httpx` (urllib chokes on the server's chunked-encoding tail) from a stable Hub resource UUID; URL pinned per FY in `KNOWN_FILE_URLS`.
+- Topline: sum `Expenditure` per Corp ID where `Fund Classification` is in {Education Fund, Operational Funds, Operating Referendum Fund, Federal Funds, Federal Stimulus Funds, State Funds, Local Funds, Self-Insurance Funds, Rainy Day Fund}; excludes Debt Funds, Capital Funds, Capital/Safety Referendum Funds. Aligned with F-33 'current expenditures' frame.
+- Crosswalk: master `state_leaid` `IN-{4-digit}` → SCFI `Corp ID` (4-digit) directly; no transformation.
+- IN school FY = calendar year (Jan-Dec) per IC 20-40-1. Latest publication: 2025-release with data through CY 2024 = our `fiscal_year=2024`. Registered with `fy_offset=-3` (FY27 calendar → CY 2024 fetch).
+- Coverage: 290 of 335 master IN operating LEAs (~87%); 0 unmatched SCFI corp IDs. The 45 missing are charter schools that file outside Gateway/SCFI (queued as a separate sibling extractor TBD).
+- IN total CY 2024 operating expenditure: **$13.3B**.
+- Spot check: Indianapolis Public Schools $572M, Fort Wayne Community $412M, Evansville-Vanderburgh $295M, Hamilton Southeastern $252M, South Bend $242M, Carmel-Clay $207M — all match public reporting.
+- Idempotent. URL needs annual update in `KNOWN_FILE_URLS` when DUAB publishes a 2026-release with CY 2025 (expected mid-2026).
+
 ---
 
 ## 7. Conventions

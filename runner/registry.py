@@ -203,6 +203,17 @@ REGISTRY: list[ExtractorSpec] = [
         fy_offset=-3,
         notes="DESE Profiles statereport ppx.aspx HTML; topline = 'Total Expenditures' (all funds, EOYR-derived)",
     ),
+    # IN
+    ExtractorSpec(
+        state_postal="IN",
+        kind="actuals",
+        module="extractors.in_",
+        # IN school FY = calendar year (Jan-Dec) per IC 20-40-1.
+        # SCFI 2025-release covers CY 2014-2024; FY27 calendar maps
+        # to CY 2024 file in hand. URL pinned per FY in KNOWN_FILE_URLS.
+        fy_offset=-3,
+        notes="DUAB SCFI Annual Deficit Surplus XLSX; topline = sum Expenditure across operating fund classifications; charters TBD",
+    ),
 ]
 
 

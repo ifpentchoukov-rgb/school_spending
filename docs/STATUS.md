@@ -2,7 +2,7 @@
 
 _Last updated: 2026-05-06_
 
-**Coverage:** 16 states live, 27.7M / 44.8M K-12 students = **61.8% of US enrollment**.
+**Coverage:** 17 states live, 28.7M / 44.8M K-12 students = **64.0% of US enrollment**.
 
 This file is the running snapshot of which states are live, which are deferred, and what's next. Update it whenever an extractor lands, a state is deferred, or a follow-up is closed.
 
@@ -23,6 +23,7 @@ This file is the running snapshot of which states are live, which are deferred, 
 | WA | 1.08M | actual | 2025 | 257/258 (99.6%) | $20.0B | OSPI F-196 10-year XLSX |
 | NJ | 1.05M | actual | 2024 | 231/265 (87.2%) | $30.9B | NJDOE TGES Detail XLSX |
 | TN | 971k | actual | 2025 | 127/129 (98.4%) | $13.0B | TDOE Annual Statistical Report Table 51 |
+| IN | 1.01M | actual ⚠️ | 2024 | 290/335 (86.6%) | $13.3B | DUAB SCFI Annual Deficit Surplus — **traditional corps only (charters TBD)** |
 | MA | 806k | actual | 2024 | 228/228 (100%) | $20.3B | DESE Profiles statereport PPX |
 | UT | 650k | actual ⚠️ | 2024 | 41/82 (50.0%) | $9.3B | USBE AFR — **districts only (charters TBD)** |
 | CT | ~525k | **adopted** | 2026 | 117/139 (84.2%) | $8.6B | CT OPM SODA API (real-time) |
@@ -41,14 +42,14 @@ This file is the running snapshot of which states are live, which are deferred, 
 
 | State | Enroll | Priority |
 |---|---:|---|
-| IN | 1.01M | next-largest greenfield |
-| MD | 891k | |
+| MD | 891k | next-largest greenfield |
 | SC | 795k | |
 | WI | 766k | |
 | AL | 750k | |
 | OK | 668k | |
 | KY | 654k | |
 | LA | 609k | |
+| OR | 543k | |
 
 ## Open follow-ups (existing extractors)
 
@@ -58,4 +59,6 @@ This file is the running snapshot of which states are live, which are deferred, 
 - **PA AFR** — close PA actuals gap (PDE doesn't publish from same landing page)
 - **IL Form 50-39** — close IL adopted-budget gap
 - **CA charter-via-Alt-Form** — sibling extractor for the ~30% gap
+- **IN charters** — 45 IN charter LEAs not in SCFI (file via different system; sibling extractor TBD)
 - **MI/OH/GA/TX adopted-budget** — would need per-district scraping (no bulk feed)
+- **IN URL refresh** — SCFI URL has "2025-release" suffix; bump `KNOWN_FILE_URLS` annually when DUAB publishes the next release
