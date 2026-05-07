@@ -847,6 +847,43 @@ Per the FY27 calendar, four states have already passed their adoption deadline a
 
 **Pattern:** of all 50 states + DC, only **5 states have a real-time adopted-budget pipeline** we can extract from: FL (TRIM), CA (SACS Budget), PA (PDE GFB), CT (OPM SODA API), and now HI (DBF BIB). Everyone else publishes actuals after audit, not adopted budgets. The `state_calendars` adoption-deadline column tracks the legal deadline, not the publication-availability date.
 
+#### NJ adopted-budget extractor (2026-05-06) ✅
+
+Companion to `extractors/nj.py` (TGES actuals). Per N.J. Stat. § 18A:22-32 NJ districts must publish a 'user-friendly' budget summary; NJDOE compiles into bulk CSVs at `/education/budget/ufb/{YY1YY2}/`.
+
+- `extractors/nj_budget.py` parses approp{YY}.csv (4.5 MB, ~34k rows; per-line-item appropriations).
+- Topline: sum amount_3 (adopted budget year column) for line 72260 'Total General Current Expense' + line 88760 'Total Special Revenue Funds' per (county_id, district_id). Excludes Capital Outlay (76400), Debt Service (89980). F-33 'current expenditures' frame.
+- Crosswalk: master `NJ-{2-digit-County}{4-digit-District}` matches `f'{county_id}{district_id}'` directly.
+- Coverage: 238/265 master NJ operating LEAs (89.8%); FY26 = SY 2025-26.
+- Spot check: Newark $792M, Jersey City $471M, Elizabeth $420M, Paterson $390M, Woodbridge $360M.
+- Registered with `kind=budget, fy_offset=0`. FY27 UFBs will appear at `/2627/` after districts adopt by 2026-05-15.
+
+This is the 6th adopted-budget extractor (FL, CA, PA, CT, HI, NJ).
+
+#### Adopted-budget pipeline scoping notes (2026-05-06)
+
+After systematic investigation of states by adoption deadline order (working through May-July 2026 deadlines), a clear pattern emerged: **most state DOEs publish actuals post-audit but not adopted budgets in bulk.** The 6 states with bulk adopted-budget pipelines are exceptional:
+- **FL** has TRIM transparency requirement → Summary Budget portal
+- **CA** has SACS biennial filings (budget + actuals)
+- **PA** has GFB bulk Excel published shortly after adoption
+- **CT** has OPM SODA API for real-time municipal/school adopted budgets
+- **HI** is biennial via legislative act → DBF Budget-in-Brief PDF
+- **NJ** has User-Friendly Budget transparency requirement → bulk CSVs
+
+States investigated for adopted-budget pipelines and **deferred** (most publish only state-aid allocations, not full local-adopted budgets):
+- **VA (5/15)** — VDOE Akamai-403 from CLI; adoption is per-locality (134 cities/counties). Existing actuals extractor uses APA, not VDOE.
+- **DC (6/15)** — Data split: DCPSBudget.com (DCPS school-level) + OSSE UPSFF Memo (policy doc, not per-LEA totals) + Council LBA. FY27 LBA pending Council passage (~July 2026).
+- **UT (6/22)** — USBE MSP Allotment Memo Reports publish state-aid only (~60-70% of operating); local property-tax effort not bulk-published.
+- **GA (6/30)** — GADOE Insights dashboards exist; no bulk per-district adopted-budget download. Adoption is local; GADOE collects via DE0046 (actuals).
+- **ME (6/30)** — ME DOE publishes FY27 EPS Total Cost (state-recommended baseline) and FY27 GPA Allocation per SAU as PDFs, but actual adopted budgets after Town Meeting Day aren't bulk-published until ED279 actuals collection (~Jan 2028).
+- **OR (6/30)** — Oregon Local Budget Law districts adopt locally; ODE doesn't bulk-publish. Each district publishes on its own site.
+- **SC (6/30)** — SCDE Funding Manual published per FY but adopted budgets are local. State appropriation bill H.5126 published by Legislature only.
+- **MA (7/1)** — DESE collects via End-of-Year Report (actuals); adopted budgets are local (town meeting / city council). Chapter 70 state aid published but not full operating.
+- **MD (7/1)** — MSDE Selected Financial Data is actuals (our existing extractor); county BOE adopted budgets are county-side, not centrally aggregated until SFD Part 2 publishes ~14 months later.
+- **MI (7/1)** — MDE Bulletin 1014 (used for actuals) doesn't have an adopted-budget counterpart; districts adopt by 7/1 but data flows through SAMS post-FY-end.
+
+**Pattern**: of 50 states + DC, only ~6-8 publish bulk adopted-budget data. Adopted-budget extractors will be a small fraction of the actuals pipeline. The remaining buildable candidates are likely IL (ISBE Form 50-39 — already in our follow-up list), WI (DPI SAFR Budget), IN (DLGF Gateway has budgets too via the Annual Financial Report adoption cycle).
+
 #### MT extractor (2026-05-06) ✅
 
 Montana OPI publishes annual School Expenditures workbook (OPIEXP{YY}.xlsx) with detail rows by County × LE × Fund × Program × Function × Object.
