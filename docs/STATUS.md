@@ -23,7 +23,7 @@ This file is the running snapshot of which states are live, which are deferred, 
 | VA | 1.26M | actual | 2025 | 101/130 (77.7%) | $22.0B | APA Comparative |
 | IL | 1.12M | actual | 2024 | 380/397 (95.7%) | $19.6B | ISBE OEPP-PCTC |
 | WA | 1.08M | actual | 2025 | 257/258 (99.6%) | $20.0B | OSPI F-196 |
-| NJ | 1.05M | actual | 2024 | 231/265 (87.2%) | $30.9B | NJDOE TGES |
+| NJ | 1.05M | actual / **adopted** | 2024 / 2026 | 231/265 / 238/265 | $30.9B / $26.1B | NJDOE TGES + UFB CSV |
 | IN | 1.01M | actual ⚠️ | 2024 | 290/335 (86.6%) | $13.3B | DUAB SCFI — traditional corps only |
 | TN | 971k | actual | 2025 | 127/129 (98.4%) | $13.0B | TDOE ASR |
 | MD | 891k | actual | 2024 | 24/24 (100%) | $17.5B | MSDE SFD |
@@ -84,6 +84,7 @@ Most states publish actuals (post-audit), not adopted budgets. These 5 have a re
 | PA | PDE General Fund Budget bulk Excel | Annual, ~Sept after Jun 30 adoption | 490/545 LEAs FY26 adopted |
 | CT | CT OPM Adopted Municipal Budget SoQL API | Real-time per-town | 117/139 LEAs FY26 adopted (date_budget_adopted recorded) |
 | HI | HI DBF Budget-in-Brief PDF | Biennial via legislative act | 1/1 LEA FY27 adopted ($2.86B) — *only state with FY27 budget data so far* |
+| NJ | NJDOE User-Friendly Budget CSVs | Per-district, post-adoption (deadline May 15) | 238/265 LEAs FY26 adopted ($26.1B); FY27 will populate as districts upload May-June 2026 |
 
 For VT/NH/IA (deadlines also passed for FY27): publication doesn't follow adoption — VT publishes per-district file post-audit (~Jan 2028); NH site Akamai-blocked; IA DOM API auth-required. Documented in [PLAN.md](../PLAN.md).
 

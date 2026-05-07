@@ -152,6 +152,16 @@ REGISTRY: list[ExtractorSpec] = [
         fy_offset=-2,
         notes="OSPI F-196 10-year XLSX; topline = General Fund EXP by District last column",
     ),
+    # NJ adopted budget — User-Friendly Budget CSV
+    ExtractorSpec(
+        state_postal="NJ",
+        kind="budget",
+        module="extractors.nj_budget",
+        # NJDOE UFB CSVs published per FY at /education/budget/ufb/{YY1YY2}/
+        # Adoption deadline May 15; data uploaded by districts late May - early June.
+        fy_offset=0,
+        notes="NJDOE User-Friendly Budget approp{YY}.csv; topline = sum amount_3 for line 72260 (Total General Current Expense) + 88760 (Total Special Revenue Funds) per district",
+    ),
     # NJ
     ExtractorSpec(
         state_postal="NJ",
