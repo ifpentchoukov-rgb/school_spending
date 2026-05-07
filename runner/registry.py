@@ -526,6 +526,17 @@ REGISTRY: list[ExtractorSpec] = [
         fy_offset=-2,
         notes="MO DESE MCDS Finance Summary XLS (passwordless auth flow + GUID-prefix file URL); topline = TOTAL EXPENDITURE; all-funds (incl debt+capital), not strict F-33",
     ),
+    # MN — MFR UFR020 PDFs via user-solved Reblaze cookies (2026-05-07)
+    ExtractorSpec(
+        state_postal="MN",
+        kind="actuals",
+        module="extractors.mn",
+        # MFR UFR020 PDFs published winter following FY-end (FY25 PDFs
+        # available Dec 2025). Cookies expire ~30 min — user must
+        # re-solve captcha periodically to refresh ~/.config/mn-cookies.txt.
+        fy_offset=-2,
+        notes="MDE MFR UFR020 PDFs (user-solved captcha cookies + curl-cffi); topline = page 2 'CURRENT OPERATING EXPENDITURES' (Funds 1,2,8); 6-way parallel fetch",
+    ),
 ]
 
 

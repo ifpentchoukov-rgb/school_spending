@@ -1000,6 +1000,43 @@ User solved the Reblaze/Stormcaster captcha at `pub.education.mn.gov/MDEAnalytic
 
 For now MN remains in the deferred set with the partial progress noted in STATUS.md.
 
+#### MN extractor — full crack via direct PDF URL discovery (2026-05-07) ✅
+
+The user re-engaged with the MN portal and shared the **`Copy as cURL`** of the actual "Display Report" POST. The cURL revealed:
+- The endpoint is `WFServlet.ibfs` (not `WFServlet`)
+- Parameter names are ALL CAPS: `DISTRICT`, `RPT_YEAR`, `REPORTNAME`, `CATEGORY_NAME`
+- A magic `IBIWF_SES_AUTH_TOKEN` session token is required
+- `IBIMR_sub_action=MR_USER_FEX` is required
+- An additional `JSESSIONID` cookie was set after UI interaction
+
+Replaying the POST returned a 5KB HTML wrapper with **a direct `<a href>` link** to a per-district PDF at:
+```
+https://pub.education.mn.gov/mfrreports/UFR020/{YEAR}/{padded}.pdf
+```
+where `{padded}` is the WebFOCUS district code (`XXXX-YY`) with the dash stripped and right-padded to 16 chars with zeros. **The PDF accepts the same Reblaze cookies and skips the entire WebFOCUS POST flow.** The session token isn't needed for the static PDFs.
+
+`extractors/mn.py` reads cookies from `~/.config/mn-cookies.txt` (overridable via `MN_COOKIES_FILE` env) and 6-way-parallel fetches the UFR020 PDF for each MN operating LEA. The PDF page 2 has a clean table:
+```
+DESCRIPTION                          2023-2024    2024-2025    % DIFF
+CATEGORY - FUNDS 1,2,8
+DISTRICT & SCHOOL ADMINISTRATION    19,915,065   22,837,654   14.68
+... (10 line items) ...
+CURRENT OPERATING EXPENDITURES     707,610,314  713,835,072    0.88
+CAPITAL OUTLAY - FUNDS 1,2,8         7,366,838    8,202,945   11.35
+COMMUNITY SERVICE FUND 04           33,059,206   37,439,146   13.25
+BUILDING CONSTRUCTION FUND 06      113,316,601   91,916,537  -18.89
+DEBT SERVICE FUND 07                99,912,831  104,748,875    4.84
+TOTAL EXPENDITURES                 961,265,792  956,142,577   -0.53
+```
+
+Topline = 'CURRENT OPERATING EXPENDITURES' line, current-year column. F-33 frame: instruction + support + operations + transportation + food service; explicitly excludes Capital Outlay, Community Service Fund 04, Building Construction Fund 06, Debt Service Fund 07.
+
+Coverage: **385/386 master MN operating LEAs (99.7%)**; FY25 statewide $14.8B. 1 district (`6036-50`, a coop) had no published UFR020. Top: Saint Paul $772M, Minneapolis $713.8M (matches our manual PDF spot-check), Anoka-Hennepin $654M, Rosemount-Apple Valley-Eagan $503M, Osseo $387M.
+
+**Cookie expiry caveat**: Reblaze session cookies last ~30 minutes. For production daily-runner use, the user must re-solve the captcha periodically and refresh the cookies file. Long-term we could automate this via Playwright with the cookies as a starting state, but for an annual-publication source the manual refresh once a year is sufficient.
+
+After this batch: **44 + DC live** (KS, AZ, NH, WV, CO, NE, MO, MN added today). Coverage 92.4% of US K-12 (was 83.2% yesterday morning). Deferred down from 14 → 7.
+
 #### MT extractor (2026-05-06) ✅
 
 Montana OPI publishes annual School Expenditures workbook (OPIEXP{YY}.xlsx) with detail rows by County × LE × Fund × Program × Function × Object.

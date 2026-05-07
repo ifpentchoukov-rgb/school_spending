@@ -2,9 +2,9 @@
 
 _Last updated: 2026-05-07_
 
-**Coverage:** 43 states (+ DC) live, 40.5M / 44.8M K-12 students = **90.4% of US enrollment**.
+**Coverage:** 44 states (+ DC) live, 41.4M / 44.8M K-12 students = **92.4% of US enrollment**.
 
-**Every US state + DC has now been investigated.** 8 are deferred for various source-side blockers (interactive portals, captchas, JS-only dashboards, lagging publication).
+**Every US state + DC has now been investigated.** 7 are deferred for various source-side blockers (interactive portals, captchas, JS-only dashboards, lagging publication).
 
 This file is the running snapshot of which states are live, which are deferred, and what's next. Update it whenever an extractor lands, a state is deferred, or a follow-up is closed.
 
@@ -27,6 +27,7 @@ This file is the running snapshot of which states are live, which are deferred, 
 | IN | 1.01M | actual / **adopted** ⚠️ | 2024 / 2025 | 290/335 / 287/335 | $13.3B / $11.0B | DUAB SCFI + DLGF Gateway Form 4B (IPS gap) |
 | TN | 971k | actual | 2025 | 127/129 (98.4%) | $13.0B | TDOE ASR |
 | MO | 869k | actual ⚠️ | 2025 | 459/459 (100%) | $17.1B | DESE MCDS Finance Summary XLS — all-funds (incl debt+capital), not strict F-33 |
+| MN | 836k | actual | 2025 | 385/386 (99.7%) | $14.8B | MDE MFR UFR020 PDFs (user-solved Reblaze captcha cookies + curl-cffi) |
 | MD | 891k | actual | 2024 | 24/24 (100%) | $17.5B | MSDE SFD |
 | MA | 806k | actual | 2024 | 228/228 (100%) | $20.3B | DESE Profiles PPX |
 | SC | 795k | actual | 2024 | 73/75 (97.3%) | $11.4B | SCDE In$ite |
@@ -56,14 +57,13 @@ This file is the running snapshot of which states are live, which are deferred, 
 | DC | 67k | actual | 2024 | 6/6 (100%) | TBD | OSSE Report Card Finance |
 | MT | 21k | actual | 2025 | 64/64 (100%) | TBD | OPI School Expenditures |
 
-## Deferred (8 states, ~4.9M enrollment)
+## Deferred (7 states, ~4.1M enrollment)
 
 | State | Enroll | Reason | Path forward |
 |---|---:|---|---|
 | NY | 2.36M | NYSED has no bulk financial feed | FOIA / Chrome-MCP |
-| MN | 836k | MDE behind Perfdrive (Reblaze/Stormcaster) captcha — partial: curl-cffi + session cookies bypass the captcha and reach the WebFOCUS API; dropdown enumeration works (1304 districts, 20 categories, 40 years) but `mdea_mfr_get_report` requires server-side session state from UI clicks that can't be reproduced from URL params alone | Get UI-fired URL via DevTools, OR use Selenium/Playwright with cookies, OR FOIA MDE for bulk dump |
 | NV | 483k | per-LEA PDFs unpredictable URLs | Chrome-MCP / FOIA |
-| NM | 295k | openbooks.ped.nm.gov reCAPTCHA-gated | Chrome-MCP through reCAPTCHA |
+| NM | 295k | openbooks.ped.nm.gov + Looker SaaS embed (Sucuri WAF defeated by curl-cffi chrome124, but data lives in Looker dashboards requiring tile-by-tile CSV scraping) | Build Looker scraper (significant effort) |
 | AK | 129k | No per-district bulk expenditure file published | FOIA DEED |
 | RI | 127k | datacenter.ride.ri.gov Tableau-only | Chrome-MCP / FOIA |
 | DE | 124k | EDSTATS PDF lags 2 years | Wait for fresher publication |
@@ -71,10 +71,11 @@ This file is the running snapshot of which states are live, which are deferred, 
 
 ## All states + DC accounted for
 
-51 jurisdictions = 43 live + 8 deferred. **KS/AZ/NH/WV/CO/MO/NE all moved from deferred to live on 2026-05-07** via the techniques toolkit:
+51 jurisdictions = 44 live + 7 deferred. **KS/AZ/NH/WV/CO/MO/NE/MN all moved from deferred to live on 2026-05-07** via the techniques toolkit:
 - **curl-cffi chrome120** TLS-impersonation defeats Akamai/Imperva/CDE-style WAFs (KS, AZ, NH, WV, CO)
 - **Multi-step ASP.NET postback / passwordless auth** unlocks DESE-style portals (IN, MO)
 - **Direct file URL discovery** when the deferral assumed postback but actually had static links (NE)
+- **User-solved captcha + DevTools cURL capture** unlocks heavily-stateful WebFOCUS-style portals (MN)
 
 ## Adopted-budget pipelines (10 states)
 
@@ -125,9 +126,9 @@ Per the May 2026 systematic deadline-order investigation: NC, TN, ID, SD (Jul de
 ## Reattack candidates (deferred but data quality is high once unblocked)
 
 Highest-value targets if a Chrome-MCP automation harness gets built:
-1. **NY (2.36M)** — would push us from 90.4% → 95.7% coverage
-2. **MN (836k)** — MFR has rich per-district data once captcha cleared
-3. **NV (483k)** — per-LEA PDF discovery + parsing
+1. **NY (2.36M)** — would push us from 92.4% → 97.6% coverage. NYSED has no bulk financial feed; would require a FOIA pull or NYSED data services contract.
+2. **NV (483k)** — per-LEA PDF discovery + parsing
+3. **NM (295k)** — Looker SaaS dashboard scraping (significant effort)
 
 The 2026-05-07 sessions added 7 new live states (KS, AZ, NH, WV, CO, NE, MO) using:
 - **curl-cffi chrome120** TLS-impersonation for Akamai/Imperva/CDE WAFs
