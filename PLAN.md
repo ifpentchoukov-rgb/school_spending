@@ -1037,6 +1037,18 @@ Coverage: **385/386 master MN operating LEAs (99.7%)**; FY25 statewide $14.8B. 1
 
 After this batch: **44 + DC live** (KS, AZ, NH, WV, CO, NE, MO, MN added today). Coverage 92.4% of US K-12 (was 83.2% yesterday morning). Deferred down from 14 → 7.
 
+#### Monthly probe script (2026-05-07) ✅
+
+`scripts/probe_new_files.py` walks a registry of `(state, fiscal_year, status, url_candidates)` tuples for sources we expect to publish in the coming year (FY25 actuals from MD/IL/MA/KY/SC/NJ/WI/CO/IN; AL FY24 catch-up; FY27 adopted from NJ/PA/WV/WA/TX/KS/IN). For each target, probes URL candidates via `curl_cffi chrome120` and reports HIT (200 + recognized data content-type) vs miss (404, error, or 200 with text/html landing page).
+
+Usage:
+- `python scripts/probe_new_files.py` — human-readable report (current snapshot)
+- `python scripts/probe_new_files.py --json` — machine-readable for diffing
+- `python scripts/probe_new_files.py --apply` — for each HIT, in-place edit `KNOWN_FILE_URLS` in the relevant module and run `python -m {module} --fiscal-year {fy} --triggered-by cron`
+- `python scripts/probe_new_files.py --filter-state MD` — one state at a time
+
+Suggested cadence: monthly (1st of month, ~7am local). Cron one-liner in the script's docstring. Current state when run on 2026-05-07: 0 hits / 18 misses (consistent with our finding that no missing-FY data has been published yet — earliest expected MD FY25 in June 2026).
+
 #### MT extractor (2026-05-06) ✅
 
 Montana OPI publishes annual School Expenditures workbook (OPIEXP{YY}.xlsx) with detail rows by County × LE × Fund × Program × Function × Object.
