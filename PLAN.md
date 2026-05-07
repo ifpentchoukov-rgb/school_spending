@@ -884,6 +884,33 @@ States investigated for adopted-budget pipelines and **deferred** (most publish 
 
 **Pattern**: of 50 states + DC, only ~6-8 publish bulk adopted-budget data. Adopted-budget extractors will be a small fraction of the actuals pipeline. The remaining buildable candidates are likely IL (ISBE Form 50-39 — already in our follow-up list), WI (DPI SAFR Budget), IN (DLGF Gateway has budgets too via the Annual Financial Report adoption cycle).
 
+#### Adopted-budget batch — TX, WA, IN (2026-05-07) ✅
+
+Continuing the autonomous deadline-order investigation through November deadlines, **3 more adopted-budget pipelines built**, plus 11 additional states confirmed defer.
+
+**Built (3 new):**
+- **TX (`extractors/tx_budget.py`)** — TEA PEIMS Record 030 bulk CSV. Major win: TX is our largest state by enrollment (5.49M), and the bulk URL was hidden in plain sight (parent page only mentions 'Actual Financial Data' but URL pattern `https://tea.texas.gov/reports-and-data/financial-reports/school-finance-reports-and-data/budget{YYYY}.zip` for districts + `/finance-and-grants/state-funding/charbud{YY}.zip` for charters serves both years). Topline: sum(BUDGAMT) where OBJECT in 6100-6499 and FUNCTION not in (00,71,81). Coverage: 1068/1069 LEAs (99.9%) FY26 = SY 2025-26, $67.3B. Houston ISD $2.26B budget vs $2.49B FY25 actual; Dallas $2.01B vs $1.99B; Austin $1.68B vs $1.06B (Austin's +58% YoY likely from a property-tax election).
+- **WA (`extractors/wa_budget.py`)** — OSPI F-195 Microsoft Access DB. Companion to F-196 actuals; same per-CCDDD topline definition (General Fund total expenditures). Uses `mdb-export` (mdbtools) to read the .accdb (~120 MB) and extract the `BudgetGeneralFundExpenditures` table. Storage: extract just the relevant CSV (~33 MB) to fit Supabase Storage payload limits; canonical hash + URL pin the original .accdb. Coverage: 256/258 LEAs (99.2%) FY26, $24.7B. Seattle $1.35B budget vs $1.14B FY25 actual (+18.9%); Lake Washington $612M (+12.5%); Spokane $611M (+7.8%).
+- **IN (`extractors/in_budget.py`)** — DLGF Gateway Form 4B via 3-step ASP.NET form POST (the Gateway download.aspx is JavaScript-driven, but proper postback with __VIEWSTATE / __EVENTVALIDATION / __EVENTTARGET cycling works). Topline: sum 'Total budget estimate_adopted' where fund_description in {EDUCATION, OPERATIONS, REFERENDUM operating variants}. Coverage: 287/335 corps (85.7%) FY25 (DLGF year=2024), $11.0B. Top: Fort Wayne $332M, Evansville $268M, Hamilton SE $228M. **Known gap**: Indianapolis Public Schools (IN-5385) does not appear in Form 4B — files via separate statutory pathway. Documented as follow-up.
+
+**Investigated and deferred (11 new):**
+- **NC (7/1)** — DPI ceased BUD entries Jun 30, 2024; no bulk feed. SBS DART expenditure-only.
+- **TN (7/1)** — TDOE ASR is actuals; ePlan is grants-only; Comptroller LGF is internal. ~141 LEA PDFs only.
+- **ID (7/15)** — ISDE publishes blank IFARMS templates, not compiled adopted budgets. Per-district hearing notices only.
+- **SD (7/15)** — DOE schoolbudget.aspx is state-aid calculators only; per-LEA budgets filed locally.
+- **OK (8/1)** — Estimates of Needs filed with county excise boards, not OSDE. ~500+ disparate PDFs.
+- **MS (8/15)** — Newspaper-synopsis publication model (Miss. Code §37-61). MDE Sup Annual Report = actuals.
+- **ND (8/15)** — NDDPI School Finance has state-aid Excel only. No companion budget feed alongside FinFacts actuals.
+- **MT (8/31)** — OPI GEMS Finance Data has no bulk export; MAEFAIRS budgets internal.
+- **AL (9/15)** — ALSDE Exhibit P-I reviewed internally; no bulk machine-readable budget side.
+- **AR (9/15)** — DESE collects budgets electronically per §6-13-622 but only newspaper synopsis is public; no bulk download.
+- **LA (9/15)** — LDOE FY23-24 'General Fund Budget Approvals' PDF is just a compliance/approval status list (which parishes had budgets approved by Sept 15) with **no dollar amounts**. Per-district ZIPs ended FY18-19. No bulk forward-looking $ feed.
+- **KY (9/30)** — KDE District Financial Reporting publishes only post-year actuals. MUNIS budgets are district-side, no aggregation.
+- **OH (10/1)** — Five-Year Forecast is buildable via OECN portal but General-Fund-only (~70-80% of operating); flagged BUILD-with-caveat for future, not yet implemented.
+- **WI (10/31)** — DPI SAFR Budget Report bulk CSV exists at `dpi.wi.gov/sfs/reporting/safr/budget/data-download` but FY27 (SY 2026-27) won't certify until ~Dec 2026. Excellent WUFAR alignment for future build.
+
+**Pattern reinforced**: Of 51 jurisdictions investigated, only 9 publish bulk adopted-budget feeds (FL, CA, PA, CT, HI, NJ, **TX, WA, IN** new). Remaining BUILD candidates are IL Form 50-39 (per-district scrape needed; in follow-up list), WI SAFR (defer until Dec 2026), KS Data Central (cert-error blocked the agent investigation; needs re-attempt), and OH Five-Year Forecast (caveat: General Fund only).
+
 #### MT extractor (2026-05-06) ✅
 
 Montana OPI publishes annual School Expenditures workbook (OPIEXP{YY}.xlsx) with detail rows by County × LE × Fund × Program × Function × Object.

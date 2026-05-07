@@ -64,10 +64,20 @@ REGISTRY: list[ExtractorSpec] = [
     # TX
     ExtractorSpec(
         state_postal="TX",
+        kind="budget",
+        module="extractors.tx_budget",
+        # PEIMS Record 030 (board-adopted budget) bulk CSV: districts +
+        # charters published ~Feb of the school year (e.g. budget26.zip
+        # posted Feb 12, 2026 for SY2025-26 = our FY26).
+        fy_offset=0,
+        notes="TEA PEIMS Record 030 bulk CSV (districts + charters); topline = sum(BUDGAMT) where OBJECT in 6100-6499 and FUNCTION not in (00, 71, 81)",
+    ),
+    ExtractorSpec(
+        state_postal="TX",
         kind="actuals",
         module="extractors.tx",
         fy_offset=-2,
-        notes="TEA PEIMS Summarized Financial Data; actuals only — TX has no bulk budget feed",
+        notes="TEA PEIMS Summarized Financial Data; topline = ALL FUNDS-TOTAL OPERATING EXPENDITURES BY OBJ",
     ),
     # IL
     ExtractorSpec(
@@ -144,6 +154,16 @@ REGISTRY: list[ExtractorSpec] = [
     # WA
     ExtractorSpec(
         state_postal="WA",
+        kind="budget",
+        module="extractors.wa_budget",
+        # OSPI F-195 .accdb published Oct of new SY (e.g. FY26 file posted
+        # Oct 9, 2025). WA fiscal year is Sept-Aug. FY27 file expected
+        # Oct 2026.
+        fy_offset=0,
+        notes="OSPI F-195 Access DB; topline = sum(General Fund Expenditures.Amount) per CCDDD",
+    ),
+    ExtractorSpec(
+        state_postal="WA",
         kind="actuals",
         module="extractors.wa",
         # OSPI F-196 10-year file published Dec of FY-end year. WA fiscal
@@ -214,6 +234,17 @@ REGISTRY: list[ExtractorSpec] = [
         notes="DESE Profiles statereport ppx.aspx HTML; topline = 'Total Expenditures' (all funds, EOYR-derived)",
     ),
     # IN
+    ExtractorSpec(
+        state_postal="IN",
+        kind="budget",
+        module="extractors.in_budget",
+        # DLGF Gateway Form 4B: budgets adopted by Nov 1 of year-before-budget-year
+        # are typically certified by DLGF in early Feb of the budget year.
+        # FY26 (DLGF year=2025) certifies ~Feb 2026; FY27 (DLGF year=2026)
+        # certifies ~Feb 2027.
+        fy_offset=0,
+        notes="DLGF Gateway Form 4B (3-step ASP.NET POST); topline = sum 'Total budget estimate_adopted' across EDUCATION + OPERATIONS + Referendum operating funds; IPS gap",
+    ),
     ExtractorSpec(
         state_postal="IN",
         kind="actuals",

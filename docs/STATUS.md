@@ -1,6 +1,6 @@
 # School District Budget Tracker — State-by-State Status
 
-_Last updated: 2026-05-06_
+_Last updated: 2026-05-07_
 
 **Coverage:** 37 states (+ DC) live, 37.3M / 44.8M K-12 students = **83.2% of US enrollment**.
 
@@ -12,7 +12,7 @@ This file is the running snapshot of which states are live, which are deferred, 
 
 | State | Enroll | Status | FY | Coverage | Topline ($) | Source |
 |---|---:|---|:---:|---:|---:|---|
-| TX | 5.49M | actual | 2025 | 1068/1069 (99.9%) | $70.8B | TEA PEIMS |
+| TX | 5.49M | actual / **adopted** | 2025 / 2026 | 1068/1069 / 1068/1069 | $70.8B / $67.3B | TEA PEIMS Summarized + PEIMS 030 |
 | CA | 4.26M | actual / **adopted** | 2025 / 2026 | 472/697 / 426/697 | $110.4B / $99.7B | SACS |
 | FL | 2.83M | actual / **adopted** | 2025 / 2026 | 67/68 / 67/68 | $32.0B / $34.4B | FLDOE AFR + Summary Budget |
 | GA | 1.73M | actual | 2025 | 184/192 (95.8%) | $24.5B | GOSA Rev/Exp |
@@ -22,9 +22,9 @@ This file is the running snapshot of which states are live, which are deferred, 
 | MI | 1.34M | actual | 2025 | 603/663 (91.0%) | $22.1B | MDE Bulletin 1011 |
 | VA | 1.26M | actual | 2025 | 101/130 (77.7%) | $22.0B | APA Comparative |
 | IL | 1.12M | actual | 2024 | 380/397 (95.7%) | $19.6B | ISBE OEPP-PCTC |
-| WA | 1.08M | actual | 2025 | 257/258 (99.6%) | $20.0B | OSPI F-196 |
+| WA | 1.08M | actual / **adopted** | 2025 / 2026 | 257/258 / 256/258 | $20.0B / $24.7B | OSPI F-196 + F-195 .accdb |
 | NJ | 1.05M | actual / **adopted** | 2024 / 2026 | 231/265 / 238/265 | $30.9B / $26.1B | NJDOE TGES + UFB CSV |
-| IN | 1.01M | actual ⚠️ | 2024 | 290/335 (86.6%) | $13.3B | DUAB SCFI — traditional corps only |
+| IN | 1.01M | actual / **adopted** ⚠️ | 2024 / 2025 | 290/335 / 287/335 | $13.3B / $11.0B | DUAB SCFI + DLGF Gateway Form 4B (IPS gap) |
 | TN | 971k | actual | 2025 | 127/129 (98.4%) | $13.0B | TDOE ASR |
 | MD | 891k | actual | 2024 | 24/24 (100%) | $17.5B | MSDE SFD |
 | MA | 806k | actual | 2024 | 228/228 (100%) | $20.3B | DESE Profiles PPX |
@@ -73,20 +73,27 @@ This file is the running snapshot of which states are live, which are deferred, 
 
 51 jurisdictions = 37 live + 14 deferred. Coverage milestone: every state has been investigated and has a documented status.
 
-## Adopted-budget pipelines (5 states)
+## Adopted-budget pipelines (9 states)
 
-Most states publish actuals (post-audit), not adopted budgets. These 5 have a real-time adopted-budget pipeline:
+Most states publish actuals (post-audit), not adopted budgets. These 9 have a real-time adopted-budget pipeline:
 
 | State | Source | Frequency | Notes |
 |---|---|---|---|
+| TX | TEA PEIMS Record 030 bulk CSV (districts + charters) | Annual, posted ~Feb of school year | 1068/1069 LEAs FY26 adopted ($67.3B); largest-state win |
 | FL | FLDOE Summary Budget portal (TRIM) | Per-district, near-real-time | 67/68 LEAs FY26 adopted captured |
 | CA | SACS Data Viewer Budget filings | Per-district, post-Aug 15 county review | 426/697 LEAs FY26 adopted |
 | PA | PDE General Fund Budget bulk Excel | Annual, ~Sept after Jun 30 adoption | 490/545 LEAs FY26 adopted |
+| WA | OSPI F-195 Microsoft Access DB (.accdb) | Annual, posted ~Oct of new SY | 256/258 LEAs FY26 adopted ($24.7B); F-33 frame parity with F-196 actuals |
+| IN | DLGF Gateway Form 4B (3-step ASP.NET POST) | Annual, certified ~Feb of budget year | 287/335 corps FY25 adopted ($11.0B); IPS gap |
+| NJ | NJDOE User-Friendly Budget CSVs | Per-district, post-adoption (deadline May 15) | 238/265 LEAs FY26 adopted ($26.1B); FY27 will populate as districts upload May-June 2026 |
 | CT | CT OPM Adopted Municipal Budget SoQL API | Real-time per-town | 117/139 LEAs FY26 adopted (date_budget_adopted recorded) |
 | HI | HI DBF Budget-in-Brief PDF | Biennial via legislative act | 1/1 LEA FY27 adopted ($2.86B) — *only state with FY27 budget data so far* |
-| NJ | NJDOE User-Friendly Budget CSVs | Per-district, post-adoption (deadline May 15) | 238/265 LEAs FY26 adopted ($26.1B); FY27 will populate as districts upload May-June 2026 |
 
 For VT/NH/IA (deadlines also passed for FY27): publication doesn't follow adoption — VT publishes per-district file post-audit (~Jan 2028); NH site Akamai-blocked; IA DOM API auth-required. Documented in [PLAN.md](../PLAN.md).
+
+### Investigated but no bulk adopted-budget feed (16 states)
+
+Per the May 2026 systematic deadline-order investigation: NC, TN, ID, SD (Jul deadlines); OK, MS, ND, MT (Aug); AL, AR, LA, KY (Sep — LA has summary PDF but no $ amounts); OH, WI (Oct — WI bulk exists but FY27 won't certify until Dec 2026). KS likely buildable (KSDE Data Central) — pending URL verification. IL Form 50-39 buildable but requires per-district scrape or FOIA — pending implementation.
 
 ## Open follow-ups (existing extractors)
 
@@ -94,12 +101,18 @@ For VT/NH/IA (deadlines also passed for FY27): publication doesn't follow adopti
 - **UT charters** — LeaNbr → A-code crosswalk for 15 skipped charter LEAs
 - **VA joint-division override** — 8 unmatched joint city-county divisions
 - **PA AFR** — close PA actuals gap
-- **IL Form 50-39** — close IL adopted-budget gap
+- **IL Form 50-39** — close IL adopted-budget gap (per-district scrape from district sites or FOIA ISBE for IWAS dump)
 - **CA charter-via-Alt-Form** — sibling extractor for ~30% gap
 - **IN charters** — 45 IN charter LEAs not in SCFI
+- **IN IPS adopted-budget** — Indianapolis Public Schools (IN-5385) absent from DLGF Gateway Form 4B; investigate alternate IN source
 - **LA Type 2 charters** — 18 LA charter LEAs aggregated as '4-Type 2'
 - **ME RSU/MSAD consolidation** — bridge per-municipality SAUs to RSU groupings
-- **MI/OH/GA/TX adopted-budget** — would need per-district scraping
+- **MI/OH/GA adopted-budget** — would need per-district scraping
+- **OH Five-Year Forecast** — buildable but General-Fund-only; flagged BUILD-with-caveat
+- **WI adopted-budget (DPI SAFR)** — bulk CSV exists; FY27 certifies ~Dec 2026; build then
+- **KS adopted-budget (Data Central)** — KSDE Data Central likely has bulk USD Budget Summary; cert-error blocked first investigation
+- **TX charter no-match (95)** — likely closed/test charter codes; verify against active charter list
+- **WA F-195 unmatched (55)** — likely state schools / juvenile detention / non-LEA entities
 - **Annual `KNOWN_FILE_URLS` refresh** — IN/WI/MD/SC/AL/LA/IA/MS/HI/ID/SD/ND/VT/DC/MT all need annual URL bumps
 - **AL FY24 PDF** — refresh when ALSDE publishes
 - **KS reconstruction precision** — investigate using KSDE-published weighted FTE
