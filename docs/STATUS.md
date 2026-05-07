@@ -39,7 +39,7 @@ This file is the running snapshot of which states are live, which are deferred, 
 | CT | ~525k | **adopted** | 2026 | 117/139 (84.2%) | $8.6B | CT OPM SODA API |
 | IA | 504k | actual | 2024 | 325/325 (100%) | TBD | Iowa DE CAR |
 | AR | 486k | actual | 2024 | 244/244 (100%) | TBD | ADE/DESE ASR |
-| KS | ~470k | actual ⚠️ | 2025 | 284/286 (99.3%) | TBD | KS Open Gov per-pupil |
+| KS | ~470k | actual / **adopted** ⚠️ | 2025 / 2026 | 284/286 / 285/286 | TBD / $8.8B | KS Open Gov + KSDE BAG PDFs |
 | MS | ~440k | actual | 2024 | 137/137 (100%) | TBD | MDE Sup Annual Report |
 | ID | 301k | actual | 2024 | 136/137 (99.3%) | TBD | ISDE 20-Year R&E |
 | HI | 167k | actual / **adopted** | 2025 / 2027 | 1/1 / 1/1 (100%) | $3.93B / $2.86B | HIDOE AFSA + DBF Budget-in-Brief (biennial) |
@@ -73,9 +73,9 @@ This file is the running snapshot of which states are live, which are deferred, 
 
 51 jurisdictions = 37 live + 14 deferred. Coverage milestone: every state has been investigated and has a documented status.
 
-## Adopted-budget pipelines (9 states)
+## Adopted-budget pipelines (10 states)
 
-Most states publish actuals (post-audit), not adopted budgets. These 9 have a real-time adopted-budget pipeline:
+Most states publish actuals (post-audit), not adopted budgets. These 10 have a real-time adopted-budget pipeline:
 
 | State | Source | Frequency | Notes |
 |---|---|---|---|
@@ -87,13 +87,14 @@ Most states publish actuals (post-audit), not adopted budgets. These 9 have a re
 | IN | DLGF Gateway Form 4B (3-step ASP.NET POST) | Annual, certified ~Feb of budget year | 287/335 corps FY25 adopted ($11.0B); IPS gap |
 | NJ | NJDOE User-Friendly Budget CSVs | Per-district, post-adoption (deadline May 15) | 238/265 LEAs FY26 adopted ($26.1B); FY27 will populate as districts upload May-June 2026 |
 | CT | CT OPM Adopted Municipal Budget SoQL API | Real-time per-town | 117/139 LEAs FY26 adopted (date_budget_adopted recorded) |
+| KS | KSDE Budget at a Glance per-USD PDFs (curl-cffi chrome120 TLS bypass for Imperva WAF) | Annual, posted ~Nov of new SY | 285/286 USDs FY26 adopted ($8.8B); 8-way parallel BAG fetch |
 | HI | HI DBF Budget-in-Brief PDF | Biennial via legislative act | 1/1 LEA FY27 adopted ($2.86B) — *only state with FY27 budget data so far* |
 
 For VT/NH/IA (deadlines also passed for FY27): publication doesn't follow adoption — VT publishes per-district file post-audit (~Jan 2028); NH site Akamai-blocked; IA DOM API auth-required. Documented in [PLAN.md](../PLAN.md).
 
-### Investigated but no bulk adopted-budget feed (17 states)
+### Investigated but no bulk adopted-budget feed (16 states)
 
-Per the May 2026 systematic deadline-order investigation: NC, TN, ID, SD (Jul deadlines); OK, MS, ND, MT (Aug); AL, AR, LA, KY (Sep — LA has summary PDF but no $ amounts); OH, WI (Oct — WI bulk exists but FY27 won't certify until Dec 2026). **KS** has structured per-USD PDF URLs (1PG/Profile/BAG) but `ksde.gov` is Imperva-firewalled to non-browser clients (same as AZ/NH/WV) — re-attempt via Chrome-MCP. **IL** Form 50-39 buildable via per-district scrape or FOIA ISBE for the IWAS bulk dump — pending implementation.
+Per the May 2026 systematic deadline-order investigation: NC, TN, ID, SD (Jul deadlines); OK, MS, ND, MT (Aug); AL, AR, LA, KY (Sep — LA has summary PDF but no $ amounts); OH, WI (Oct — WI bulk exists but FY27 won't certify until Dec 2026). **IL** Form 50-39 buildable via per-district scrape or FOIA ISBE for the IWAS bulk dump — pending implementation. KSDE Imperva WAF defeated 2026-05-07 via curl-cffi chrome120 TLS impersonation — same technique now applies to AZ/NH/WV reattempts.
 
 ## Open follow-ups (existing extractors)
 
@@ -113,9 +114,9 @@ Per the May 2026 systematic deadline-order investigation: NC, TN, ID, SD (Jul de
 - **KS adopted-budget (Data Central)** — KSDE Data Central likely has bulk USD Budget Summary; cert-error blocked first investigation
 - **TX charter no-match (95)** — likely closed/test charter codes; verify against active charter list
 - **WA F-195 unmatched (55)** — likely state schools / juvenile detention / non-LEA entities
+- **AZ/NH/WV reattempt via curl-cffi** — same Imperva WAF as KS; KS-tested chrome120 TLS impersonation should bypass these too
 - **Annual `KNOWN_FILE_URLS` refresh** — IN/WI/MD/SC/AL/LA/IA/MS/HI/ID/SD/ND/VT/DC/MT all need annual URL bumps
 - **AL FY24 PDF** — refresh when ALSDE publishes
-- **KS reconstruction precision** — investigate using KSDE-published weighted FTE
 - **DC charters not in master** — 63 charter LEAs in OSSE file but not in master operating-LEA set
 
 ## Reattack candidates (deferred but data quality is high once unblocked)

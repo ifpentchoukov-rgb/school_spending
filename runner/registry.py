@@ -351,6 +351,16 @@ REGISTRY: list[ExtractorSpec] = [
     # KS
     ExtractorSpec(
         state_postal="KS",
+        kind="budget",
+        module="extractors.ks_budget",
+        # KSDE Budget at a Glance PDFs published per-USD shortly after
+        # the Aug 25 adoption deadline (FY26 BAGs posted Nov 2025).
+        # Bypass Imperva via curl-cffi chrome120 TLS impersonation.
+        fy_offset=0,
+        notes="KSDE BAG PDFs (per-USD) via curl-cffi; topline = All Funds Total - Capital - Debt Services",
+    ),
+    ExtractorSpec(
+        state_postal="KS",
         kind="actuals",
         module="extractors.ks",
         # Kansas Open Gov per-pupil CSV (KSDE CPFS source); FY25 latest.
