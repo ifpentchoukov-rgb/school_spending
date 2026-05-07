@@ -497,6 +497,16 @@ REGISTRY: list[ExtractorSpec] = [
         fy_offset=0,
         notes="WVDE PSSP BOE State Aid Reconciliation PDF (curl-cffi); topline = Basic State Aid Allowance for County Boards (state-aid frame, NOT full F-33)",
     ),
+    # CO — bypassed CDE WAF via curl-cffi chrome120 (2026-05-07)
+    ExtractorSpec(
+        state_postal="CO",
+        kind="actuals",
+        module="extractors.co",
+        # CDE Financial Transparency district data XLSX; FY24 published
+        # winter 2025; FY25 expected ~July 2026.
+        fy_offset=-3,
+        notes="CDE Financial Transparency XLSX (curl-cffi + retry/backoff for IP rate-limit); topline = sum AMOUNT where SPENDING_FUNDING='Spending' and ORG_ROLLUP in ('Learning Environment','Operations'); F-33 frame",
+    ),
 ]
 
 

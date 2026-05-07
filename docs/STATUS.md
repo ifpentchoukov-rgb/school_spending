@@ -2,9 +2,9 @@
 
 _Last updated: 2026-05-07_
 
-**Coverage:** 40 states (+ DC) live, 38.4M / 44.8M K-12 students = **85.7% of US enrollment**.
+**Coverage:** 41 states (+ DC) live, 39.3M / 44.8M K-12 students = **87.7% of US enrollment**.
 
-**Every US state + DC has now been investigated.** 11 are deferred for various source-side blockers (interactive portals, captchas, IP blocks, JS-only dashboards, lagging publication).
+**Every US state + DC has now been investigated.** 10 are deferred for various source-side blockers (interactive portals, captchas, IP blocks, JS-only dashboards, lagging publication).
 
 This file is the running snapshot of which states are live, which are deferred, and what's next. Update it whenever an extractor lands, a state is deferred, or a follow-up is closed.
 
@@ -36,6 +36,7 @@ This file is the running snapshot of which states are live, which are deferred, 
 | KY | 654k | actual | 2024 | 167/167 (100%) | $9.9B | KDE AFR R&E |
 | UT | 650k | actual ⚠️ | 2024 | 41/82 (50.0%) | $9.3B | USBE AFR — districts only |
 | LA | 609k | actual ⚠️ | 2024 | 69/87 (79.3%) | $9.8B | LDOE AFSR — traditional parishes only |
+| CO | 865k | actual | 2024 | 181/181 (100%) | $14.0B | CDE Financial Transparency (curl-cffi + retry) |
 | WV | ~242k | **adopted** ⚠️ | 2026 | 51/55 (92.7%) | $1.4B | WVDE PSSP BOE Recon (curl-cffi) — state-aid frame only |
 | OR | 543k | actual | 2024 | 179/184 (97.3%) | TBD | ODE Detailed District Expenditure |
 | CT | ~525k | **adopted** | 2026 | 117/139 (84.2%) | $8.6B | CT OPM SODA API |
@@ -53,13 +54,12 @@ This file is the running snapshot of which states are live, which are deferred, 
 | DC | 67k | actual | 2024 | 6/6 (100%) | TBD | OSSE Report Card Finance |
 | MT | 21k | actual | 2025 | 64/64 (100%) | TBD | OPI School Expenditures |
 
-## Deferred (11 states, ~7.0M enrollment)
+## Deferred (10 states, ~6.1M enrollment)
 
 | State | Enroll | Reason | Path forward |
 |---|---:|---|---|
 | NY | 2.36M | NYSED has no bulk financial feed | FOIA / Chrome-MCP |
 | MO | 869k | DESE ASBR per-district ASP.NET postback only | Chrome-MCP / FOIA |
-| CO | 865k | CDE rate-limited our IP | Re-attempt with curl-cffi chrome120 (same technique that defeated AZ/NH/WV/KS Imperva) |
 | MN | 836k | MDE behind Perfdrive captcha | Chrome-MCP / FOIA |
 | NV | 483k | per-LEA PDFs unpredictable URLs | Chrome-MCP / FOIA |
 | NE | 330k | sfos.education.ne.gov ASP.NET per-district interactive | Chrome-MCP postback automation |
@@ -71,7 +71,7 @@ This file is the running snapshot of which states are live, which are deferred, 
 
 ## All states + DC accounted for
 
-51 jurisdictions = 40 live + 11 deferred. AZ, NH, WV moved from deferred to live on 2026-05-07 via curl-cffi chrome120 TLS impersonation.
+51 jurisdictions = 41 live + 10 deferred. KS/AZ/NH/WV/CO all moved from deferred to live on 2026-05-07 via curl-cffi chrome120 TLS impersonation.
 
 ## Adopted-budget pipelines (10 states)
 
@@ -122,9 +122,8 @@ Per the May 2026 systematic deadline-order investigation: NC, TN, ID, SD (Jul de
 ## Reattack candidates (deferred but data quality is high once unblocked)
 
 Highest-value targets if a Chrome-MCP automation harness gets built:
-1. **NY (2.36M)** — would push us from 85.7% → 91.0% coverage
+1. **NY (2.36M)** — would push us from 87.7% → 93.0% coverage
 2. **MO (869k)** — DESE ASBR data is comprehensive once postback automated
-3. **CO (865k)** — code is verified; should re-attempt with curl-cffi chrome120 (same technique that defeated AZ/NH/WV Akamai/Imperva on 2026-05-07)
-4. **MN (836k)** — MFR has rich per-district data once captcha cleared
+3. **MN (836k)** — MFR has rich per-district data once captcha cleared
 
-The 2026-05-07 batch (AZ + NH + WV) demonstrated that **curl-cffi chrome120 TLS impersonation defeats Akamai/Imperva WAFs** — same blocker pattern across many state DOE sites. This unblocks the WAF-only deferrals at minimal cost; only `verify=False` and the curl-cffi dependency are added per state.
+The 2026-05-07 batch (KS + AZ + NH + WV + CO — five new live states) demonstrated that **curl-cffi chrome120 TLS impersonation defeats Akamai/Imperva/CDE-style WAFs** — same blocker pattern across many state DOE sites. This unblocks the WAF-only deferrals at minimal cost; only `verify=False` and the curl-cffi dependency are added per state.

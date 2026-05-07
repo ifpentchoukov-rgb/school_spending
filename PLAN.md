@@ -951,6 +951,19 @@ Before: 37 states + DC live. After: 40 states + DC live (+1.0M enrollment, 83.2%
 
 **Pattern**: of the original 14 deferred states, 4 had WAF-only blockers (KS, AZ, NH, WV). All 4 are now live. Remaining 11 deferred either have genuine no-bulk-data problems (NY, AK, NE, NV, NM) or different blockers (MO ASP.NET postback, MN Perfdrive captcha — already complex separate problems). CO is the most likely next quick win — same Akamai pattern, just needs curl-cffi reattempt from the original network.
 
+#### CO extractor — CDE WAF + IP rate-limit bypass via curl-cffi (2026-05-07) ✅
+
+**Fifth state moved from deferred to live in this batch** (KS, AZ, NH, WV, CO). The previous deferral was "CDE rate-limited our IP" — `curl-cffi chrome120` TLS impersonation defeats the WAF, but CDE additionally throttles the source IP after ~10 quick requests (separate per-IP throttle, not just TLS fingerprinting). Extractor handles this with exponential backoff (30s, 60s, 120s, 240s, 480s) and a `--xlsx-path` fallback for using a cached file when CDE refuses connections.
+
+- `extractors/co.py` reads CDE Financial Transparency Disclosure XLSX from `https://www.cde.state.co.us/cdefinance/ft_fy{YYYY}_distdatafile`. Sheet `Org_Spending_Funding`.
+- Topline: sum AMOUNT where `SPENDING_FUNDING='Spending'` and `ORG_ROLLUP in ('Learning Environment', 'Operations')`. Excludes `'Construction, Debt, Refinancing & Other'` (= capital + debt service) by ORG_ROLLUP filter. F-33 'current expenditures' frame.
+- Crosswalk: master `CO-{4-digit ORG_CODE}` → XLSX `ORG_CODE` directly.
+- Coverage: **181/181 master CO operating LEAs (100%)**; FY24 = SY 2023-24; statewide $14.0B.
+- Top: Denver $1,609M, Jefferson Co $1,188M, Douglas Co $966M, Cherry Creek $892.5M (matches agent spot-check exactly), Aurora $721M, Adams 12 $556M.
+- 20 unmatched ORG_CODEs are BOCES (Boards of Cooperative Educational Services, codes 8XXX) and state aggregator entities (codes 9XXX) — not in our master operating-district set.
+
+After this batch: **41 + DC live** (KS, AZ, NH, WV, CO added today). Coverage 87.7% of US K-12 (was 83.2% yesterday). Adopted-budget pipelines: 11. Remaining deferrals are mostly genuine no-bulk-data problems or different blocker classes (postback, captcha, Tableau).
+
 #### MT extractor (2026-05-06) ✅
 
 Montana OPI publishes annual School Expenditures workbook (OPIEXP{YY}.xlsx) with detail rows by County × LE × Fund × Program × Function × Object.
