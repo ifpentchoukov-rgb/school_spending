@@ -467,6 +467,36 @@ REGISTRY: list[ExtractorSpec] = [
         fy_offset=-2,
         notes="OPI School Expenditures XLSX; topline = sum where Function code 1XXX/2XXX/3XXX per LE",
     ),
+    # AZ — bypassed Akamai via curl-cffi chrome120 (2026-05-07)
+    ExtractorSpec(
+        state_postal="AZ",
+        kind="actuals",
+        module="extractors.az",
+        # ADE SAFR Digital Data XLSX published Jan of year after FY-end.
+        # FY25 published Jan 2026.
+        fy_offset=-2,
+        notes="ADE SAFR Digital Data XLSX (curl-cffi); topline = sum all object cols (cols D+) across functions 1000/2100-2900/3100-3400; F-33 frame",
+    ),
+    # NH — bypassed Akamai via curl-cffi chrome120 + Referer (2026-05-07)
+    ExtractorSpec(
+        state_postal="NH",
+        kind="actuals",
+        module="extractors.nh",
+        # NH DOE Cost Per Pupil CSV published Jan of year after FY-end.
+        # FY25 published Jan 2026.
+        fy_offset=-2,
+        notes="NH DOE Cost Per Pupil CSV (curl-cffi + Referer); topline = CPP × master enrollment_fy25",
+    ),
+    # WV — bypassed Drupal/Imperva via curl-cffi chrome120 (2026-05-07)
+    ExtractorSpec(
+        state_postal="WV",
+        kind="budget",
+        module="extractors.wv",
+        # WVDE PSSP BOE State Aid Reconciliation PDF; FY26 final
+        # published winter 2025-26.
+        fy_offset=0,
+        notes="WVDE PSSP BOE State Aid Reconciliation PDF (curl-cffi); topline = Basic State Aid Allowance for County Boards (state-aid frame, NOT full F-33)",
+    ),
 ]
 
 

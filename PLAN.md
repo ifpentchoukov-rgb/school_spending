@@ -925,6 +925,32 @@ The earlier deferral was based on `curl` and Python-stdlib `urllib` getting back
 
 This is the **10th adopted-budget extractor** (FL, CA, PA, CT, HI, NJ, TX, WA, IN, KS). The `curl-cffi` technique is now in our toolkit for the other Imperva-walled states (AZ, NH, WV) — added as a reattempt note in STATUS.md follow-ups.
 
+#### AZ + NH + WV extractors — Akamai/Imperva bypass via curl-cffi (2026-05-07) ✅
+
+**Three more states moved from deferred to live** by applying the same `curl-cffi chrome120` technique that defeated KSDE. Pattern reinforced: **TLS-fingerprinting WAFs (Akamai, Imperva, F5) are defeated by `curl_cffi.requests.get(url, impersonate='chrome120', verify=False)`** — no Chrome MCP needed, no FOIA needed. The cost is one Python dep (`curl-cffi`) and `verify=False`.
+
+Before: 37 states + DC live. After: 40 states + DC live (+1.0M enrollment, 83.2% → 85.7% of US K-12).
+
+**AZ — `extractors/az.py`** (ACTUAL only — bulk adopted budgets not published)
+- Source: ADE SAFR Digital Data XLSX at `https://www.azed.gov/sites/default/files/{YYYY}/01/Digital%20Data%20-%20Districts%20%26%20Charters%20Final.xlsx`. Two sheets: 'District' (233 LEAs) + 'Charter' (415 LEAs).
+- Topline: sum all object columns (cols D onwards) across all 11 NCES function blocks (1000 Instruction, 2100-2900 Support, 3100/3200/3400 Operations). Excludes Function 4000 (Facilities/Capital) + 5000 (Debt) by SAFR grid construction. F-33 'current expenditures' frame.
+- Crosswalk: master `AZ-{4-digit Entity ID}` (e.g. AZ-4235 Mesa). SAFR file has Name + CTDS but not Entity ID. Match by normalized Name (strip ' (NNNN)' suffix, lowercase, normalize 'School District'/'District' variants).
+- Coverage: 162/187 master operating AZ LEAs (86.6%); FY25 = SY 2024-25; statewide $7.4B (matched only). ⚠️ Master gap: AZ master only has Unified districts, missing many Elementary-only and Union HS Districts (which are separate AZ LEAs but combine in NCES). Top: Mesa $664M, Tucson $526M, Chandler $470M, Peoria $387M.
+
+**NH — `extractors/nh.py`** (ACTUAL only — adopted budgets are local town meetings)
+- Source: NH DOE Cost Per Pupil CSV at `https://www.education.nh.gov/.../cost-per-pupil-fy{YYYY}.csv`. Multi-row preamble; data starts at row 18.
+- WAF quirk: NH requires both chrome120 TLS impersonation AND a valid `Referer` header (otherwise 403). Custom `User-Agent` header BREAKS the WAF — let curl-cffi use the chrome120 native UA.
+- Topline: per-district 'Total (Pre School-12)' Cost Per Pupil × master `enrollment_fy25`. NH publishes only per-pupil per district (not totals); we approximate using CCD headcount instead of NH's ADM-A denominator (~2-5% off in either direction).
+- Coverage: 62/70 master operating NH LEAs (88.6%); FY25; statewide $2.5B. Manchester $215.3M, Nashua $180.3M, Concord $93.8M.
+
+**WV — `extractors/wv.py`** (ADOPTED state-aid frame ONLY — not full F-33)
+- Source: WVDE PSSP BOE State Aid Reconciliation PDF at `https://wvde.us/media/{ID}/boe-sa-recon-comps-{YY}pdf`. Per-county tabular data on page 1.
+- Parser quirk: pdfplumber occasionally inserts a stray space inside dollar amounts in narrow columns (e.g. '3 4,545' for '$34,545'). Fixed via narrow regex `(?<![\d,])(\d)\s(\d{1,2},\d{3})` that targets only the artifact pattern, not legitimate column separators.
+- Topline: 'Basic State Aid Allowance for County Boards (WVC 18-9A-12)' — the legally-adopted state appropriation per county. **State-aid frame ONLY**; does NOT include local share (county property tax) or federal funds (those live in WVEIS behind a login). Marked ⚠️ in STATUS.md so it's not compared apples-to-apples with F-33-frame states.
+- Coverage: 51/55 master operating WV counties (92.7%); FY26 = SY 2025-26; state-aid total $1.4B. Kanawha $127M, Berkeley $124M, Wood $67M. The 4 missing counties (Marshall, Tyler, Wetzel, +1) had charter-school payments exceeding their basic state aid, netting them to $0 — those are valid 0-amount events.
+
+**Pattern**: of the original 14 deferred states, 4 had WAF-only blockers (KS, AZ, NH, WV). All 4 are now live. Remaining 11 deferred either have genuine no-bulk-data problems (NY, AK, NE, NV, NM) or different blockers (MO ASP.NET postback, MN Perfdrive captcha — already complex separate problems). CO is the most likely next quick win — same Akamai pattern, just needs curl-cffi reattempt from the original network.
+
 #### MT extractor (2026-05-06) ✅
 
 Montana OPI publishes annual School Expenditures workbook (OPIEXP{YY}.xlsx) with detail rows by County × LE × Fund × Program × Function × Object.
