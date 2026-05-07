@@ -2,9 +2,9 @@
 
 _Last updated: 2026-05-07_
 
-**Coverage:** 41 states (+ DC) live, 39.3M / 44.8M K-12 students = **87.7% of US enrollment**.
+**Coverage:** 43 states (+ DC) live, 40.5M / 44.8M K-12 students = **90.4% of US enrollment**.
 
-**Every US state + DC has now been investigated.** 10 are deferred for various source-side blockers (interactive portals, captchas, IP blocks, JS-only dashboards, lagging publication).
+**Every US state + DC has now been investigated.** 8 are deferred for various source-side blockers (interactive portals, captchas, JS-only dashboards, lagging publication).
 
 This file is the running snapshot of which states are live, which are deferred, and what's next. Update it whenever an extractor lands, a state is deferred, or a follow-up is closed.
 
@@ -26,6 +26,7 @@ This file is the running snapshot of which states are live, which are deferred, 
 | NJ | 1.05M | actual / **adopted** | 2024 / 2026 | 231/265 / 238/265 | $30.9B / $26.1B | NJDOE TGES + UFB CSV |
 | IN | 1.01M | actual / **adopted** ⚠️ | 2024 / 2025 | 290/335 / 287/335 | $13.3B / $11.0B | DUAB SCFI + DLGF Gateway Form 4B (IPS gap) |
 | TN | 971k | actual | 2025 | 127/129 (98.4%) | $13.0B | TDOE ASR |
+| MO | 869k | actual ⚠️ | 2025 | 459/459 (100%) | $17.1B | DESE MCDS Finance Summary XLS — all-funds (incl debt+capital), not strict F-33 |
 | MD | 891k | actual | 2024 | 24/24 (100%) | $17.5B | MSDE SFD |
 | MA | 806k | actual | 2024 | 228/228 (100%) | $20.3B | DESE Profiles PPX |
 | SC | 795k | actual | 2024 | 73/75 (97.3%) | $11.4B | SCDE In$ite |
@@ -44,6 +45,7 @@ This file is the running snapshot of which states are live, which are deferred, 
 | AR | 486k | actual | 2024 | 244/244 (100%) | TBD | ADE/DESE ASR |
 | KS | ~470k | actual / **adopted** ⚠️ | 2025 / 2026 | 284/286 / 285/286 | TBD / $8.8B | KS Open Gov + KSDE BAG PDFs |
 | MS | ~440k | actual | 2024 | 137/137 (100%) | TBD | MDE Sup Annual Report |
+| NE | 330k | actual | 2025 | 245/245 (100%) | $4.8B | NE SFOS AFR ZIP (Fund 01 GF expenditures) |
 | ID | 301k | actual | 2024 | 136/137 (99.3%) | TBD | ISDE 20-Year R&E |
 | HI | 167k | actual / **adopted** | 2025 / 2027 | 1/1 / 1/1 (100%) | $3.93B / $2.86B | HIDOE AFSA + DBF Budget-in-Brief (biennial) |
 | ME | 160k | actual ⚠️ | 2025 | 97/177 (54.8%) | TBD | ME DOE — RSU/MSAD granularity mismatch |
@@ -54,15 +56,13 @@ This file is the running snapshot of which states are live, which are deferred, 
 | DC | 67k | actual | 2024 | 6/6 (100%) | TBD | OSSE Report Card Finance |
 | MT | 21k | actual | 2025 | 64/64 (100%) | TBD | OPI School Expenditures |
 
-## Deferred (10 states, ~6.1M enrollment)
+## Deferred (8 states, ~4.9M enrollment)
 
 | State | Enroll | Reason | Path forward |
 |---|---:|---|---|
 | NY | 2.36M | NYSED has no bulk financial feed | FOIA / Chrome-MCP |
-| MO | 869k | DESE ASBR per-district ASP.NET postback only | Chrome-MCP / FOIA |
 | MN | 836k | MDE behind Perfdrive captcha | Chrome-MCP / FOIA |
 | NV | 483k | per-LEA PDFs unpredictable URLs | Chrome-MCP / FOIA |
-| NE | 330k | sfos.education.ne.gov ASP.NET per-district interactive | Chrome-MCP postback automation |
 | NM | 295k | openbooks.ped.nm.gov reCAPTCHA-gated | Chrome-MCP through reCAPTCHA |
 | AK | 129k | No per-district bulk expenditure file published | FOIA DEED |
 | RI | 127k | datacenter.ride.ri.gov Tableau-only | Chrome-MCP / FOIA |
@@ -71,7 +71,10 @@ This file is the running snapshot of which states are live, which are deferred, 
 
 ## All states + DC accounted for
 
-51 jurisdictions = 41 live + 10 deferred. KS/AZ/NH/WV/CO all moved from deferred to live on 2026-05-07 via curl-cffi chrome120 TLS impersonation.
+51 jurisdictions = 43 live + 8 deferred. **KS/AZ/NH/WV/CO/MO/NE all moved from deferred to live on 2026-05-07** via the techniques toolkit:
+- **curl-cffi chrome120** TLS-impersonation defeats Akamai/Imperva/CDE-style WAFs (KS, AZ, NH, WV, CO)
+- **Multi-step ASP.NET postback / passwordless auth** unlocks DESE-style portals (IN, MO)
+- **Direct file URL discovery** when the deferral assumed postback but actually had static links (NE)
 
 ## Adopted-budget pipelines (10 states)
 
@@ -122,8 +125,13 @@ Per the May 2026 systematic deadline-order investigation: NC, TN, ID, SD (Jul de
 ## Reattack candidates (deferred but data quality is high once unblocked)
 
 Highest-value targets if a Chrome-MCP automation harness gets built:
-1. **NY (2.36M)** — would push us from 87.7% → 93.0% coverage
-2. **MO (869k)** — DESE ASBR data is comprehensive once postback automated
-3. **MN (836k)** — MFR has rich per-district data once captcha cleared
+1. **NY (2.36M)** — would push us from 90.4% → 95.7% coverage
+2. **MN (836k)** — MFR has rich per-district data once captcha cleared
+3. **NV (483k)** — per-LEA PDF discovery + parsing
 
-The 2026-05-07 batch (KS + AZ + NH + WV + CO — five new live states) demonstrated that **curl-cffi chrome120 TLS impersonation defeats Akamai/Imperva/CDE-style WAFs** — same blocker pattern across many state DOE sites. This unblocks the WAF-only deferrals at minimal cost; only `verify=False` and the curl-cffi dependency are added per state.
+The 2026-05-07 sessions added 7 new live states (KS, AZ, NH, WV, CO, NE, MO) using:
+- **curl-cffi chrome120** TLS-impersonation for Akamai/Imperva/CDE WAFs
+- **Multi-step ASP.NET postback / passwordless auth** for DESE-style portals
+- **Direct file URL discovery** when deferral assumptions were wrong (NE turned out to have static links)
+
+The remaining deferrals (NY, MN, NV, NM, AK, RI, DE, WY) need different techniques: captcha solving (MN, NM), Tableau scraping (RI), per-LEA PDF discovery (NV), or genuine no-bulk-data workarounds (NY, AK, WY).

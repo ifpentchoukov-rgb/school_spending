@@ -507,6 +507,25 @@ REGISTRY: list[ExtractorSpec] = [
         fy_offset=-3,
         notes="CDE Financial Transparency XLSX (curl-cffi + retry/backoff for IP rate-limit); topline = sum AMOUNT where SPENDING_FUNDING='Spending' and ORG_ROLLUP in ('Learning Environment','Operations'); F-33 frame",
     ),
+    # NE — direct ZIP, no postback needed (2026-05-07)
+    ExtractorSpec(
+        state_postal="NE",
+        kind="actuals",
+        module="extractors.ne",
+        # SFOS AFR ZIP published fall after FY-end. FY25 (afr2425.zip)
+        # available now.
+        fy_offset=-2,
+        notes="NE SFOS AFR ZIP (curl-cffi); topline = Account 01-2-20400-000 (Total General Fund Expenditures)",
+    ),
+    # MO — DESE MCDS via passwordless 2-step auth + auto-form bridge (2026-05-07)
+    ExtractorSpec(
+        state_postal="MO",
+        kind="actuals",
+        module="extractors.mo",
+        # DESE MCDS Finance Summary multi-year XLS; FY25 latest sheet.
+        fy_offset=-2,
+        notes="MO DESE MCDS Finance Summary XLS (passwordless auth flow + GUID-prefix file URL); topline = TOTAL EXPENDITURE; all-funds (incl debt+capital), not strict F-33",
+    ),
 ]
 
 

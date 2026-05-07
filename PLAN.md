@@ -964,6 +964,23 @@ Before: 37 states + DC live. After: 40 states + DC live (+1.0M enrollment, 83.2%
 
 After this batch: **41 + DC live** (KS, AZ, NH, WV, CO added today). Coverage 87.7% of US K-12 (was 83.2% yesterday). Adopted-budget pipelines: 11. Remaining deferrals are mostly genuine no-bulk-data problems or different blocker classes (postback, captcha, Tableau).
 
+#### NE + MO extractors — postback deferrals were wrong (2026-05-07) ✅
+
+**Two more states moved from deferred to live**, both originally classified as "ASP.NET per-district interactive" but actually buildable with simpler approaches.
+
+**NE — `extractors/ne.py`** — the deferral was simply wrong. `sfos.education.ne.gov/Default.aspx` is a static HTML page with direct ZIP links, no postback flow at all. URL pattern `https://sfos.education.ne.gov/FOS/Data/afr{YY1}{YY2}.zip` returns a 3.8MB ZIP containing `afr{YY1}{YY2}.xlsx` with two sheets: AFR (long format: AgencyID, Account, Amount, DataYears) and Account Description. Topline = Account `01-2-20400-000` 'TOTAL GENERAL FUND EXPENDITURES' per AgencyID. Coverage: **245/245 master NE LEAs (100%)**; FY25 statewide $4.8B. Top: Omaha $813M, Lincoln $545M, Millard $276M.
+
+**MO — `extractors/mo.py`** — the deferral was technically right (the per-district ASBR viewer is auth-walled and postback-driven) but missed the bulk file. DESE's MCDS portal hosts a 'Finance Data and Statistics Summary for All Districts' multi-year XLS (sheets 2000–2025) gated behind a passwordless 2-step sign-in:
+1. GET `DESEApplicationsSignin/OrgSelect?appId=6540` → `__RequestVerificationToken`
+2. POST with `{ApplicationId=6540, ApplicationScopeId=28371, SelectedPersonType=AP, ...}` → returns auto-submit form with ~8 opaque session-bridge tokens
+3. POST those bridge tokens to `MCDS/home.aspx` → sets `ASP.NET_SessionId` + `ADAuthCookie` cookies
+4. GET `home.aspx` and parse for `FileDownloadWebHandler.ashx?filename={GUID8}{Filename}` matching 'Finance Data'
+5. GET that handler URL with cookies → 3.94 MB XLS
+
+The GUID prefix changes per release — we resolve it dynamically by parsing the home page each run. Topline = column 'TOTAL EXPENDITURE' from sheet `{fiscal_year}`. ⚠️ All-funds total (GF + Teacher Fund + Debt Service Fund + Capital Projects Fund); the 2025 release dropped the prior 'CURRENT EXPENDITURE' column, so we can't isolate F-33 frame from this file. Coverage: **459/459 master MO LEAs (100%)**; FY25 statewide $17.1B. Top: Special Sch Dst St Louis Co $642M, St Louis City $537M, Springfield R-XII $472M, North Kansas City 74 $453M, Columbia 93 $433M.
+
+After this batch: **43 + DC live** (KS, AZ, NH, WV, CO, NE, MO added today). Coverage 90.4% of US K-12 (was 83.2% yesterday morning). Deferred down from 14 → 8.
+
 #### MT extractor (2026-05-06) ✅
 
 Montana OPI publishes annual School Expenditures workbook (OPIEXP{YY}.xlsx) with detail rows by County × LE × Fund × Program × Function × Object.
