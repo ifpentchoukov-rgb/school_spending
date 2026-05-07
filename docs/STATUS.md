@@ -91,9 +91,9 @@ Most states publish actuals (post-audit), not adopted budgets. These 9 have a re
 
 For VT/NH/IA (deadlines also passed for FY27): publication doesn't follow adoption — VT publishes per-district file post-audit (~Jan 2028); NH site Akamai-blocked; IA DOM API auth-required. Documented in [PLAN.md](../PLAN.md).
 
-### Investigated but no bulk adopted-budget feed (16 states)
+### Investigated but no bulk adopted-budget feed (17 states)
 
-Per the May 2026 systematic deadline-order investigation: NC, TN, ID, SD (Jul deadlines); OK, MS, ND, MT (Aug); AL, AR, LA, KY (Sep — LA has summary PDF but no $ amounts); OH, WI (Oct — WI bulk exists but FY27 won't certify until Dec 2026). KS likely buildable (KSDE Data Central) — pending URL verification. IL Form 50-39 buildable but requires per-district scrape or FOIA — pending implementation.
+Per the May 2026 systematic deadline-order investigation: NC, TN, ID, SD (Jul deadlines); OK, MS, ND, MT (Aug); AL, AR, LA, KY (Sep — LA has summary PDF but no $ amounts); OH, WI (Oct — WI bulk exists but FY27 won't certify until Dec 2026). **KS** has structured per-USD PDF URLs (1PG/Profile/BAG) but `ksde.gov` is Imperva-firewalled to non-browser clients (same as AZ/NH/WV) — re-attempt via Chrome-MCP. **IL** Form 50-39 buildable via per-district scrape or FOIA ISBE for the IWAS bulk dump — pending implementation.
 
 ## Open follow-ups (existing extractors)
 
