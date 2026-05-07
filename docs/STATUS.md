@@ -61,7 +61,7 @@ This file is the running snapshot of which states are live, which are deferred, 
 | State | Enroll | Reason | Path forward |
 |---|---:|---|---|
 | NY | 2.36M | NYSED has no bulk financial feed | FOIA / Chrome-MCP |
-| MN | 836k | MDE behind Perfdrive captcha | Chrome-MCP / FOIA |
+| MN | 836k | MDE behind Perfdrive (Reblaze/Stormcaster) captcha — partial: curl-cffi + session cookies bypass the captcha and reach the WebFOCUS API; dropdown enumeration works (1304 districts, 20 categories, 40 years) but `mdea_mfr_get_report` requires server-side session state from UI clicks that can't be reproduced from URL params alone | Get UI-fired URL via DevTools, OR use Selenium/Playwright with cookies, OR FOIA MDE for bulk dump |
 | NV | 483k | per-LEA PDFs unpredictable URLs | Chrome-MCP / FOIA |
 | NM | 295k | openbooks.ped.nm.gov reCAPTCHA-gated | Chrome-MCP through reCAPTCHA |
 | AK | 129k | No per-district bulk expenditure file published | FOIA DEED |

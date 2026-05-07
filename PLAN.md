@@ -981,6 +981,25 @@ The GUID prefix changes per release — we resolve it dynamically by parsing the
 
 After this batch: **43 + DC live** (KS, AZ, NH, WV, CO, NE, MO added today). Coverage 90.4% of US K-12 (was 83.2% yesterday morning). Deferred down from 14 → 8.
 
+#### MN — partial progress on WebFOCUS API (2026-05-07) ⏸️
+
+User solved the Reblaze/Stormcaster captcha at `pub.education.mn.gov/MDEAnalytics/DataTopic.jsp?TOPICID=9` and shared session cookies (`__uzma`/`__uzmb`/`__uzmc`/`__uzmd`/`__uzmf`/`uzmx`/`WF_SESSIONID` + variants).
+
+**What works** with cookies via `curl_cffi` chrome120:
+- Loading the topic page, the report launcher (`mdea_mfr_reportlaunch.htm`), and the JS utilities (`mdea_ddl_utilities.js`).
+- Calling `mdea_mfr_district_list` with `IBIAPP_app=mdea_reports` returns 1304 districts (e.g. `0021-01` AUDUBON).
+- Calling `mdea_mfr_category_list` with `IBIAPP_app=mdea_reports mssql baseapp` returns the unfiltered 20 categories.
+- Calling `mdea_mfr_year_list` returns 40 years (`86-87` through `27-28`).
+
+**What doesn't work**: Calling `mdea_mfr_report_list` and `mdea_mfr_get_report` returns "EDA no data" no matter what combination of `district`/`year`/`category_name` parameters we try (verified with both the UI's hardcoded `IBIAPP_app=mdea_reports baseapp mssql baseapp` and POST instead of GET). The launcher is an IBI WebFOCUS composer-rendered page where dropdowns are bound to server-side session state via the iframe `requests_list="11"` mechanism — the parameter names and values that get serialized when the user clicks "Display Report" are not derivable from the URL/HTML alone. We confirmed via the screenshot that the UI flow is district-first → category populates dependently → year → report → click Run.
+
+**Path forward** (any of):
+1. User completes one full UI-driven report run with DevTools open and shares the exact URL fired against `WFServlet?IBIF_ex=mdea_mfr_get_report&...`. That single URL captures the parameter shape we're missing — once we have it, we can iterate over (district × year × report) to bulk-fetch.
+2. Drive the launcher in a headless browser (Playwright / Selenium) with the session cookies and capture the dynamically-built request from the iframe.
+3. FOIA MDE for the underlying SQL view (`mfrreports.mas`) bulk dump.
+
+For now MN remains in the deferred set with the partial progress noted in STATUS.md.
+
 #### MT extractor (2026-05-06) ✅
 
 Montana OPI publishes annual School Expenditures workbook (OPIEXP{YY}.xlsx) with detail rows by County × LE × Fund × Program × Function × Object.
