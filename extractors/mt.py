@@ -42,11 +42,13 @@ from supabase import Client
 
 from extractors._base import (
     BudgetEventInput,
+    ComponentInput,
     Run,
     fetch_all,
     sha256_bytes,
     upload_source_document,
     upsert_budget_event_with_supersession,
+    upsert_components,
     upsert_source_document_row,
 )
 
@@ -80,6 +82,40 @@ def download(url: str) -> bytes:
         return resp.read()
 
 
+# Phase 7.5 — MT Function-code → canonical category. The OPIEXP file
+# rolls Function codes up to 3-digit + 'X' level (e.g. '21XX', '23XX')
+# or 2-digit + 'XX' (e.g. '1XXX', '4XXX'). String-prefix match.
+_MT_FUNC_PREFIX_TO_CATEGORY: dict[str, str | None] = {
+    "1XXX": "instruction",
+    "21XX": "support_services_student",
+    "221X": "support_services_instruction",
+    "222X": "support_services_instruction",
+    "23XX": "administration",
+    "24XX": "administration",
+    "25XX": "administration",
+    "258X": "administration",
+    "26XX": "operations_maintenance",
+    "27XX": "transportation",
+    "31XX": "food_service",
+    "32XX": None,  # enterprise
+    "33XX": None,  # community
+    "34XX": None,  # extracurricular activities
+    "35XX": None,  # extracurricular athletics
+    "3XXX": None,  # generic non-educational
+    "4XXX": "capital_outlay",
+    "51XX": "debt_service",
+    "52XX": "debt_service",
+    "53XX": "debt_service",
+    "61XX": None,  # transfers
+    "62XX": None,
+    "9999": None,
+}
+
+
+def _mt_func_to_category(fc: str) -> str | None:
+    return _MT_FUNC_PREFIX_TO_CATEGORY.get(fc.strip() if fc else "")
+
+
 def parse_mt(xlsx_bytes: bytes) -> list[dict]:
     wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes), read_only=True, data_only=True)
     ws = wb["ExpByLineItemByLE"]
@@ -87,15 +123,16 @@ def parse_mt(xlsx_bytes: bytes) -> list[dict]:
     next(rows)  # row 0: total
     next(rows)  # row 1: header
     totals: dict[str, float] = {}
+    components: dict[str, dict[str, float]] = {}
     for r in rows:
         if not r or r[2] is None:
             continue
         le = str(r[2]).strip()
         if not le:
             continue
-        func_code = str(r[9]) if r[9] is not None else ""
-        if not func_code or func_code[0] not in ("1", "2", "3"):
-            continue
+        # OPIEXP stores Function as 3-digit-prefix + 'X' (e.g. '1XXX',
+        # '21XX', '23XX'). Pure string; no numeric coercion.
+        func_code = str(r[9]).strip() if r[9] is not None else ""
         amt = r[13]
         if amt is None:
             continue
@@ -103,9 +140,19 @@ def parse_mt(xlsx_bytes: bytes) -> list[dict]:
             v = float(amt)
         except (TypeError, ValueError):
             continue
-        totals[le] = totals.get(le, 0.0) + v
+        if func_code and func_code[0] in ("1", "2", "3"):
+            totals[le] = totals.get(le, 0.0) + v
+        # Phase 7.5 — canonical category breakdown (includes 4XXX + 5XXX)
+        category = _mt_func_to_category(func_code)
+        if category is not None and v > 0:
+            components.setdefault(le, {}).setdefault(category, 0.0)
+            components[le][category] += v
     return [
-        {"code": code, "total_op_exp": v}
+        {
+            "code": code,
+            "total_op_exp": v,
+            "components": components.get(code, {}),
+        }
         for code, v in totals.items()
         if v > 0
     ]
@@ -183,6 +230,9 @@ def extract(*, fiscal_year: int = 2025, triggered_by: str = "manual") -> dict:
         print(f"  MT LEs in file: {len(district_data):,}")
 
         no_match: list[str] = []
+        n_components_inserted = 0
+        n_components_updated = 0
+        n_components_unchanged = 0
         for d in district_data:
             district = crosswalk.get(d["code"])
             if district is None:
@@ -198,16 +248,49 @@ def extract(*, fiscal_year: int = 2025, triggered_by: str = "manual") -> dict:
                 source_document_id=src_id,
                 extraction_run_id=run.run_id,
             )
-            _, changed = upsert_budget_event_with_supersession(
+            event_id, changed = upsert_budget_event_with_supersession(
                 client=client, event=event
             )
             run.records_extracted += 1
             if changed:
                 run.records_changed += 1
 
+            components: list[ComponentInput] = []
+            for category, amount in d.get("components", {}).items():
+                if amount <= 0:
+                    continue
+                components.append(
+                    ComponentInput(
+                        category=category,
+                        amount=float(amount),
+                        definition=(
+                            f"OPI OPIEXP 'ExpByLineItemByLE': sum SumOfAmount "
+                            f"where LE={d['code']} AND FunctionCode maps to "
+                            f"'{category}' per NCES function-range bucketing"
+                        ),
+                        line_or_cell_reference=(
+                            f"Sheet 'ExpByLineItemByLE'; LE={d['code']}; "
+                            f"function-code range bucketing per _mt_func_to_category"
+                        ),
+                    )
+                )
+            if components:
+                ins, upd, unch = upsert_components(
+                    client=client,
+                    budget_event_id=event_id,
+                    components=components,
+                )
+                n_components_inserted += ins
+                n_components_updated += upd
+                n_components_unchanged += unch
+
         print(
             f"  inserted/changed={run.records_changed}/{run.records_extracted}; "
             f"unmatched MT LEs (elementary-only/HS-only not in master): {len(no_match)}"
+        )
+        print(
+            f"  components: inserted={n_components_inserted} "
+            f"updated={n_components_updated} unchanged={n_components_unchanged}"
         )
 
     return {

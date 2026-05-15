@@ -1149,7 +1149,9 @@ NY was the biggest deferred state at 2.36M enrollment and the prior deferral not
     - **IL: demoted to moderate** — OEPP-PCTC file is topline-only; no function/object breakdown. IL state_extractor_metadata.coverage_tier updated. ISBE AFR (IWAS-gated) would unlock rich tier; queued.
     
     **Total: 35,960 component rows across 3,621 budget events.** All extractors idempotent.
-- [~] **7.5 — Universal floor pass (in progress 2026-05-15).** Working through moderate-tier states; 9 of 26 done. 5 promoted to rich tier along the way (net +5 rich states, so 12 rich total).
+- [x] **7.5 — Universal floor pass (complete 2026-05-15).** Worked through all 26 moderate-tier states. 11 promoted to rich tier along the way (net +11 rich states, so 19 rich total). 5 sources are inherently topline-only and skipped for component emission (FL Section II PDF, MA DESE PPX HTML, TN ASR Table 51, ND FinFacts PDF, MO DESE MCDS Finance Summary).
+    
+    **Batch 1 (9 states, 13,959 components):**
     - **GA → rich**: 184 districts × 9 categories = **1,345** components (GOSA Rev/Exp 11 DESCRIPTION values → canonical mapping)
     - **OH → rich**: 606 × 8 = **4,847** (Cupp Report per-pupil cols × ADM)
     - **VA → rich**: 101 × 8 = **808** (APA Exhibit C6 — 5 exp + 3 revenue)
@@ -1159,9 +1161,23 @@ NY was the biggest deferred state at 2.36M enrollment and the prior deferral not
     - **IN (mod)**: 290 × ~2 = **542** (SCFI Fund Classification: Debt + Capital + Capital/Safety Referendum)
     - **LA (mod)**: 69 × ~4 = **271** (AFSR Item 9 Categories E11-E18 instruction, E31 food, E41 capital, E51 debt)
     - **AR (mod)**: 244 × 2 = **477** (ASR PDF lines 77, 78: capital + debt)
-    - **Total so far: 13,959 components across ~2,299 events** (in addition to Phase 7.4's 35,960 = **49,919 grand total**).
-    - **Skipped (no per-district breakdown in source):** WA — F-196 detail sheets are state-level aggregates only.
-    - **Remaining moderate-tier (17, ranked by enrollment):** CA (SACS MDB has full Object×Function — needs mdbtools install for Function-level breakdown; current extractor only sums Object), FL, CO, MA, MO, MN, TN, AZ, IA, UT, MS, NE, ID, SD, ND, MT. Each ~30-90 min depending on source format — TN/MA have topline-only sources; AZ/IA need function-grid inspection; CA is the biggest opportunity (could become rich) but heaviest.
+    
+    **Batch 2 (11 states, 15,681 components):**
+    - **MT → rich**: 64 districts × 8 categories = **510** (OPIEXP Function-prefix bucketing — '1XXX', '21XX', '4XXX', '5XXX' etc.)
+    - **ID → rich**: 136 × 5 = **581** (ISDE All-Funds 5 named cols: Instruction, Support, Non-Instructional, Capital, Debt)
+    - **UT (mod)**: 41 × 6 = **243** (AFR Summary 5 function blocks × 8 obj cols; benefits = Object 2xx across blocks)
+    - **MS (mod)**: 137 × 5 = **685** (Sup Annual Report 5 functional-area cols + col 20 capital)
+    - **AZ → rich**: 194 × ~8 = **1,460** (SAFR Digital Data 11 Function blocks × 6-7 Object cols; benefits = 6200 across blocks)
+    - **MN → rich**: 385 × ~9 = **3,334** (UFR020 PDF page 2 — 11 line items in Funds 1,2,8 block + separate Building/Debt fund lines)
+    - **SD (mod)**: 148 × 2 = **296** (Exp&FB sheet col 9 Capital Outlay Fund 21 + col 12 SpEd as support_services_student)
+    - **NE (mod)**: 245 × ~2 = **519** (AFR per-fund 'XX-2-20500-000' Total Disbursements: 02/07/08=capital, 06=debt, 10=food)
+    - **CO → rich**: 181 × ~11 = **1,962** (Org_Explore_More sheet: (CATEGORY, ROLLUP) × SUB_ROLLUP=None + Benefits by personnel type)
+    - **IA → rich**: 325 × ~5 = **1,587** (CAR workbook 'Inst*' cols → instruction, '*Ben' → benefits, NutritionExpData1 → food, CapProj+SAVE+PPEL → capital, Debt → debt)
+    - **CA → rich**: 472 × ~10 = **4,504** (SACS UserGL Function code bucketing within Funds 01-29 + Object 1000-7999; capital = Object 6000-6999; benefits = Object 3000-3999)
+    
+    **Total Phase 7.5: 29,640 components across ~4,700 events. Cumulative Phase 7.4+7.5: 65,600 component rows.**
+    
+    **Skipped (no per-district breakdown in source):** WA (F-196 detail sheets are state-level aggregates), FL (Section II PDF only — capital/debt in separate sections would require more PDF parsing), MA (DESE PPX HTML totals only), TN (ASR Table 51 totals only), ND (FinFacts PDF Section H ADM×Avg Cost only), MO (DESE MCDS XLS has TOTAL EXPENDITURE but no expenditure-side sub-categories).
 - [ ] **7.6 — `v_per_pupil_metrics` view.** Joins `budget_events`, `districts`, `budget_event_components` to expose `topline_per_pupil`, plus per-category per-pupil columns. Used by §9 rankings and §10 API.
 
 **Acceptance:** rich-tier states emit ≥8 components per non-superseded event; moderate-tier emit ≥2; thin-tier flagged. `v_per_pupil_metrics` returns a row for every non-superseded budget_event with a positive enrollment_fy25.

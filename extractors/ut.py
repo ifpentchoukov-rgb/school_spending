@@ -42,11 +42,13 @@ from supabase import Client
 
 from extractors._base import (
     BudgetEventInput,
+    ComponentInput,
     Run,
     fetch_all,
     sha256_bytes,
     upload_source_document,
     upsert_budget_event_with_supersession,
+    upsert_components,
     upsert_source_document_row,
 )
 
@@ -72,6 +74,21 @@ GRAND_TOTAL_COL_IDX = 38  # col 38 in Gov Funds Total sheet
 LEATYPE_COL_IDX = 0
 LEANBR_COL_IDX = 1
 LEA_COL_IDX = 2
+
+# Phase 7.5 — UT Function-category 0-indexed col ranges (data row).
+# Row 4 of the sheet labels these spans: 1xxx Instruction (cols 3-10, 8 obj
+# cols), 2xxx Support Services (11-18), 3xxx Noninstructional (19-26),
+# 4xxx Facilities Acquisition (27-34, capital_outlay), 5xxx Debt Service
+# & Misc (35-37, 3 obj cols only).
+_UT_FUNCTION_BLOCKS: list[tuple[str, range]] = [
+    ("instruction", range(3, 11)),
+    ("support_services_instruction", range(11, 19)),
+    ("food_service", range(19, 27)),  # Noninstructional ≈ food + community
+    ("capital_outlay", range(27, 35)),
+    ("debt_service", range(35, 38)),
+]
+# Object 2xx (Employee Benefits) lives at offset +1 within each 8-col block.
+_UT_BENEFITS_COLS: tuple[int, ...] = (4, 12, 20, 28)
 
 
 def file_url(fiscal_year: int) -> str | None:
@@ -121,11 +138,37 @@ def parse_gov_funds_total(xlsx_bytes: bytes) -> list[dict]:
             lea_nbr = int(float(row[LEANBR_COL_IDX]))
         except (TypeError, ValueError):
             continue
+
+        def _sum_cols(cols):
+            s = 0.0
+            for c in cols:
+                if c >= len(row):
+                    continue
+                v = row[c]
+                if v is None:
+                    continue
+                try:
+                    s += float(v)
+                except (TypeError, ValueError):
+                    pass
+            return s
+
+        components: dict[str, float] = {}
+        for category, col_range in _UT_FUNCTION_BLOCKS:
+            v = _sum_cols(col_range)
+            if v > 0:
+                components[category] = v
+        # employee_benefits = sum of Object 2xx across all function blocks
+        benefits = _sum_cols(_UT_BENEFITS_COLS)
+        if benefits > 0:
+            components["employee_benefits"] = benefits
+
         out.append({
             "lea_type": str(row[LEATYPE_COL_IDX]).strip(),
             "lea_nbr": lea_nbr,
             "lea_name": row[LEA_COL_IDX],
             "total": total,
+            "components": components,
         })
     return out
 
@@ -212,6 +255,9 @@ def extract(*, fiscal_year: int = 2024, triggered_by: str = "manual") -> dict:
 
         no_match: list[str] = []
         skipped_charter = 0
+        n_components_inserted = 0
+        n_components_updated = 0
+        n_components_unchanged = 0
         for row in afr_rows:
             if row["lea_type"] != "District":
                 # v1 handles districts only; charters need separate crosswalk
@@ -232,16 +278,50 @@ def extract(*, fiscal_year: int = 2024, triggered_by: str = "manual") -> dict:
                 source_document_id=src_id,
                 extraction_run_id=run.run_id,
             )
-            _, changed = upsert_budget_event_with_supersession(
+            event_id, changed = upsert_budget_event_with_supersession(
                 client=client, event=event
             )
             run.records_extracted += 1
             if changed:
                 run.records_changed += 1
 
+            components: list[ComponentInput] = []
+            for category, amount in row.get("components", {}).items():
+                if amount <= 0:
+                    continue
+                components.append(
+                    ComponentInput(
+                        category=category,
+                        amount=float(amount),
+                        definition=(
+                            f"USBE AFR Summary Expenditure 'Gov Funds Total' "
+                            f"sheet, LEA {row['lea_nbr']:02d}: sum of object "
+                            f"cols within function block mapping to '{category}' "
+                            f"(or Object 2xx across blocks for employee_benefits)"
+                        ),
+                        line_or_cell_reference=(
+                            f"Sheet 'Gov Funds Total'; LeaNbr={row['lea_nbr']}; "
+                            f"per _UT_FUNCTION_BLOCKS / _UT_BENEFITS_COLS"
+                        ),
+                    )
+                )
+            if components:
+                ins, upd, unch = upsert_components(
+                    client=client,
+                    budget_event_id=event_id,
+                    components=components,
+                )
+                n_components_inserted += ins
+                n_components_updated += upd
+                n_components_unchanged += unch
+
         print(
             f"  inserted/changed={run.records_changed}/{run.records_extracted}; "
             f"skipped charters: {skipped_charter}; unmatched districts: {len(no_match)}"
+        )
+        print(
+            f"  components: inserted={n_components_inserted} "
+            f"updated={n_components_updated} unchanged={n_components_unchanged}"
         )
 
     return {

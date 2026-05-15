@@ -67,11 +67,13 @@ from supabase import Client
 
 from extractors._base import (
     BudgetEventInput,
+    ComponentInput,
     Run,
     fetch_all,
     sha256_bytes,
     upload_source_document,
     upsert_budget_event_with_supersession,
+    upsert_components,
     upsert_source_document_row,
 )
 
@@ -185,26 +187,71 @@ _CURRENT_OP_RE = re.compile(
     re.M,
 )
 
+# Phase 7.5 — UFR020 page-2 line labels → canonical category. Within
+# CATEGORY - FUNDS 1,2,8 block plus the separate Capital/Building/Debt
+# lines below. PUPIL TRANSPORTAION (sic) is misspelled in the PDF.
+_MN_LINE_TO_CATEGORY: list[tuple[str, str]] = [
+    ("DISTRICT & SCHOOL ADMINISTRATION", "administration"),
+    ("DISTRICT SUPPORT SERVICES", "support_services_instruction"),
+    ("REGULAR INSTRUCTION", "instruction"),
+    ("VOCATIONAL INSTRUCTION", "instruction"),
+    ("SPECIAL EDUCATION INSTRUCTION", "instruction"),
+    ("INSTRUCTIONAL SUPPORT SERVICES", "support_services_instruction"),
+    ("PUPIL SUPPORT SERVICES", "support_services_student"),
+    ("OPERATIONS & MAINTENANCE", "operations_maintenance"),
+    ("FOOD SERVICE", "food_service"),
+    ("PUPIL TRANSPORTAION", "transportation"),  # PDF misspelling intentional
+    ("OTHER OPERATING PROGRAMS", "other"),
+    ("CAPITAL OUTLAY - FUNDS 1,2,8", "capital_outlay"),
+    ("BUILDING CONSTRUCTION FUND 06", "capital_outlay"),
+    ("DEBT SERVICE FUND 07", "debt_service"),
+]
 
-def parse_ufr020_pdf(pdf_bytes: bytes) -> int | None:
-    """Extract CURRENT OPERATING EXPENDITURES (current FY column) from
-    UFR020 PDF page 2. Returns int dollars, or None if not parseable."""
-    try:
-        with pdfplumber.open(io.BytesIO(pdf_bytes)) as p:
-            if len(p.pages) < 2:
-                return None
-            text = p.pages[1].extract_text() or ""
-    except Exception:
-        return None
 
-    m = _CURRENT_OP_RE.search(text)
+def _parse_amount(text: str, label: str) -> float | None:
+    """Find LABEL followed by FY-1 amount + FY amount + pct on the same
+    line. Returns the FY (current) amount, or None if the line is missing
+    or has no values (e.g. FOOD SERVICE blank for some districts)."""
+    # Escape regex metachars in label, allow flexible whitespace
+    safe = re.escape(label).replace(r"\ ", r"\s+")
+    pat = (
+        rf"{safe}\s+([\d,]+\.\d{{2}})\s+([\d,]+\.\d{{2}})\s+[\d,.\-]+"
+    )
+    m = re.search(pat, text)
     if not m:
         return None
     try:
-        # group(2) = current FY column
-        return int(round(float(m.group(2).replace(",", ""))))
-    except (ValueError, TypeError):
+        return float(m.group(2).replace(",", ""))
+    except ValueError:
         return None
+
+
+def parse_ufr020_pdf(pdf_bytes: bytes) -> tuple[int | None, dict[str, float]]:
+    """Extract CURRENT OPERATING EXPENDITURES (current FY column) and
+    canonical-category components from UFR020 PDF page 2. Returns
+    (topline_int, components_dict)."""
+    try:
+        with pdfplumber.open(io.BytesIO(pdf_bytes)) as p:
+            if len(p.pages) < 2:
+                return None, {}
+            text = p.pages[1].extract_text() or ""
+    except Exception:
+        return None, {}
+
+    m = _CURRENT_OP_RE.search(text)
+    topline = None
+    if m:
+        try:
+            topline = int(round(float(m.group(2).replace(",", ""))))
+        except (ValueError, TypeError):
+            topline = None
+
+    components: dict[str, float] = {}
+    for label, category in _MN_LINE_TO_CATEGORY:
+        v = _parse_amount(text, label)
+        if v and v > 0:
+            components[category] = components.get(category, 0.0) + v
+    return topline, components
 
 
 def build_mn_crosswalk(client: Client) -> dict[str, dict]:
@@ -311,6 +358,9 @@ def extract(*, fiscal_year: int = 2025, triggered_by: str = "manual",
                 return wfcode, district, None, str(e)
             return wfcode, district, pdf, None
 
+        n_components_inserted = 0
+        n_components_updated = 0
+        n_components_unchanged = 0
         with ThreadPoolExecutor(max_workers=max_workers) as ex:
             futs = [
                 ex.submit(worker, wf, d)
@@ -323,7 +373,7 @@ def extract(*, fiscal_year: int = 2025, triggered_by: str = "manual",
                     no_pdf.append(wfcode)
                 else:
                     n_pdf += 1
-                    topline = parse_ufr020_pdf(pdf_bytes)
+                    topline, comp_dict = parse_ufr020_pdf(pdf_bytes)
                     if topline and topline > 0:
                         n_parsed += 1
                         event = BudgetEventInput(
@@ -335,12 +385,42 @@ def extract(*, fiscal_year: int = 2025, triggered_by: str = "manual",
                             source_document_id=src_id,
                             extraction_run_id=run.run_id,
                         )
-                        _, changed = upsert_budget_event_with_supersession(
+                        event_id, changed = upsert_budget_event_with_supersession(
                             client=client, event=event
                         )
                         run.records_extracted += 1
                         if changed:
                             run.records_changed += 1
+
+                        components: list[ComponentInput] = []
+                        for category, amount in comp_dict.items():
+                            if amount <= 0:
+                                continue
+                            components.append(
+                                ComponentInput(
+                                    category=category,
+                                    amount=float(amount),
+                                    definition=(
+                                        f"MDE MFR UFR020 PDF page 2 line(s) "
+                                        f"mapping to '{category}' (CATEGORY - "
+                                        f"FUNDS 1,2,8 block + Building/Debt "
+                                        f"fund lines), current-FY column"
+                                    ),
+                                    line_or_cell_reference=(
+                                        f"UFR020 PDF p.2; WebFOCUS code "
+                                        f"{wfcode}; per _MN_LINE_TO_CATEGORY"
+                                    ),
+                                )
+                            )
+                        if components:
+                            ins, upd, unch = upsert_components(
+                                client=client,
+                                budget_event_id=event_id,
+                                components=components,
+                            )
+                            n_components_inserted += ins
+                            n_components_updated += upd
+                            n_components_unchanged += unch
                     else:
                         parse_fail.append(wfcode)
                 if n_done % 50 == 0:
@@ -353,6 +433,10 @@ def extract(*, fiscal_year: int = 2025, triggered_by: str = "manual",
             f"  inserted/changed={run.records_changed}/{run.records_extracted}; "
             f"pdf-fetched={n_pdf}/{n_total}; parse-fail={len(parse_fail)}; "
             f"no-pdf-published={len(no_pdf)}"
+        )
+        print(
+            f"  components: inserted={n_components_inserted} "
+            f"updated={n_components_updated} unchanged={n_components_unchanged}"
         )
         if parse_fail[:5]:
             print(f"  sample parse-fail: {parse_fail[:8]}")

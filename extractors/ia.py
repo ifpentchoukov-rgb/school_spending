@@ -45,11 +45,13 @@ from supabase import Client
 
 from extractors._base import (
     BudgetEventInput,
+    ComponentInput,
     Run,
     fetch_all,
     sha256_bytes,
     upload_source_document,
     upsert_budget_event_with_supersession,
+    upsert_components,
     upsert_source_document_row,
 )
 
@@ -77,6 +79,16 @@ OPERATING_SHEETS = (
     "NutritionExpData1",
 )
 
+# Phase 7.5 — IA per-sheet → canonical category mapping for the
+# universal-floor component pass. NutritionExpData1 is also part of
+# topline (operating) but emits a food_service component as well.
+_IA_NONOPERATING_TO_CATEGORY: dict[str, str] = {
+    "CapProjExpData1": "capital_outlay",
+    "SAVEExpData1": "capital_outlay",
+    "PPELExpData1": "capital_outlay",
+    "DebtExpData1": "debt_service",
+}
+
 KNOWN_FILE_URLS: dict[int, str] = {
     # FY24 = SY 2023-24 CAR data; published 2025.
     2024: "https://educate.iowa.gov/media/9108/download?inline",
@@ -93,31 +105,80 @@ def download(url: str) -> bytes:
         return resp.read()
 
 
+def _ia_iter_sheet(ws, header_label="district"):
+    """Yield (district_int, header_row_tuple, data_row_tuple) for each
+    data row in a CAR ExpData sheet. header_row_tuple is column headers
+    aligned to data row indices (so r[i] and header[i] correspond)."""
+    header_row_idx = None
+    for i, r in enumerate(ws.iter_rows(values_only=True, max_row=8)):
+        if r and len(r) > 1 and r[1] == header_label:
+            header_row_idx = i + 1
+            header = r
+            break
+    if header_row_idx is None:
+        return
+    for r in ws.iter_rows(min_row=header_row_idx + 1, values_only=True):
+        if not r or r[1] is None:
+            continue
+        try:
+            d = int(r[1])
+        except (TypeError, ValueError):
+            continue
+        yield d, header, r
+
+
 def parse_ia(xlsx_bytes: bytes) -> list[dict]:
     wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes), read_only=True, data_only=True)
     totals: dict[int, float] = {}
+    components: dict[int, dict[str, float]] = {}
+    # Operating-sheet pass — topline + per-sheet canonical breakdown.
     for sheet_name in OPERATING_SHEETS:
         if sheet_name not in wb.sheetnames:
             print(f"  WARN: sheet {sheet_name!r} not found; skipping")
             continue
         ws = wb[sheet_name]
-        # Find header row (contains 'district' literal at col 1)
-        header_row_idx = None
-        for i, r in enumerate(ws.iter_rows(values_only=True, max_row=8)):
-            if r and len(r) > 1 and r[1] == "district":
-                header_row_idx = i + 1
-                break
-        if header_row_idx is None:
-            print(f"  WARN: header not found in {sheet_name!r}")
+        for d, header, r in _ia_iter_sheet(ws):
+            row_sum = 0.0
+            inst = 0.0
+            benefits = 0.0
+            for idx in range(3, len(r)):
+                v = r[idx]
+                if v is None:
+                    continue
+                try:
+                    f = float(v)
+                except (TypeError, ValueError):
+                    continue
+                row_sum += f
+                col_label = header[idx] if idx < len(header) else None
+                if not col_label:
+                    continue
+                cl = str(col_label)
+                # InstSal, InstBen, InstPurchServ, ... → instruction
+                if cl.startswith("Inst"):
+                    inst += f
+                # *Ben columns (object 200 Employee Benefits)
+                if cl.endswith("Ben"):
+                    benefits += f
+            if row_sum > 0:
+                totals[d] = totals.get(d, 0.0) + row_sum
+                if sheet_name == "NutritionExpData1":
+                    components.setdefault(d, {}).setdefault("food_service", 0.0)
+                    components[d]["food_service"] += row_sum
+            if inst > 0:
+                components.setdefault(d, {}).setdefault("instruction", 0.0)
+                components[d]["instruction"] += inst
+            if benefits > 0:
+                components.setdefault(d, {}).setdefault("employee_benefits", 0.0)
+                components[d]["employee_benefits"] += benefits
+
+    # Non-operating capital + debt sheets — emit per-sheet sum as the
+    # appropriate canonical category.
+    for sheet_name, category in _IA_NONOPERATING_TO_CATEGORY.items():
+        if sheet_name not in wb.sheetnames:
             continue
-        # Sum cols 3..end for each row past header
-        for r in ws.iter_rows(min_row=header_row_idx + 1, values_only=True):
-            if not r or r[1] is None:
-                continue
-            try:
-                d = int(r[1])
-            except (TypeError, ValueError):
-                continue
+        ws = wb[sheet_name]
+        for d, header, r in _ia_iter_sheet(ws):
             row_sum = 0.0
             for v in r[3:]:
                 if v is None:
@@ -127,9 +188,15 @@ def parse_ia(xlsx_bytes: bytes) -> list[dict]:
                 except (TypeError, ValueError):
                     continue
             if row_sum > 0:
-                totals[d] = totals.get(d, 0.0) + row_sum
+                components.setdefault(d, {}).setdefault(category, 0.0)
+                components[d][category] += row_sum
+
     return [
-        {"code": str(d), "total_op_exp": v}
+        {
+            "code": str(d),
+            "total_op_exp": v,
+            "components": components.get(d, {}),
+        }
         for d, v in totals.items()
         if v > 0
     ]
@@ -216,6 +283,9 @@ def extract(*, fiscal_year: int = 2024, triggered_by: str = "manual") -> dict:
         print(f"  CAR districts with operating expenditures: {len(district_data):,}")
 
         no_match: list[str] = []
+        n_components_inserted = 0
+        n_components_updated = 0
+        n_components_unchanged = 0
         for d in district_data:
             district = crosswalk.get(d["code"])
             if district is None:
@@ -231,16 +301,53 @@ def extract(*, fiscal_year: int = 2024, triggered_by: str = "manual") -> dict:
                 source_document_id=src_id,
                 extraction_run_id=run.run_id,
             )
-            _, changed = upsert_budget_event_with_supersession(
+            event_id, changed = upsert_budget_event_with_supersession(
                 client=client, event=event
             )
             run.records_extracted += 1
             if changed:
                 run.records_changed += 1
 
+            components: list[ComponentInput] = []
+            for category, amount in d.get("components", {}).items():
+                if amount <= 0:
+                    continue
+                components.append(
+                    ComponentInput(
+                        category=category,
+                        amount=float(amount),
+                        definition=(
+                            f"Iowa CAR workbook: '{category}' = sum of "
+                            f"per-sheet/per-column-prefix amounts. "
+                            f"capital_outlay = CapProj+SAVE+PPEL sheets; "
+                            f"debt_service = Debt sheet; food_service = "
+                            f"Nutrition sheet; instruction = cols starting "
+                            f"with 'Inst' in operating sheets; "
+                            f"employee_benefits = cols ending in 'Ben'."
+                        ),
+                        line_or_cell_reference=(
+                            f"district col 1={d['code']}; per "
+                            f"_IA_NONOPERATING_TO_CATEGORY + Inst*/+*Ben prefix"
+                        ),
+                    )
+                )
+            if components:
+                ins, upd, unch = upsert_components(
+                    client=client,
+                    budget_event_id=event_id,
+                    components=components,
+                )
+                n_components_inserted += ins
+                n_components_updated += upd
+                n_components_unchanged += unch
+
         print(
             f"  inserted/changed={run.records_changed}/{run.records_extracted}; "
             f"unmatched CAR districts (AEAs/specialty): {len(no_match)}"
+        )
+        print(
+            f"  components: inserted={n_components_inserted} "
+            f"updated={n_components_updated} unchanged={n_components_unchanged}"
         )
 
     return {

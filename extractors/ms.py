@@ -41,11 +41,13 @@ from supabase import Client
 
 from extractors._base import (
     BudgetEventInput,
+    ComponentInput,
     Run,
     fetch_all,
     sha256_bytes,
     upload_source_document,
     upsert_budget_event_with_supersession,
+    upsert_components,
     upsert_source_document_row,
 )
 
@@ -86,14 +88,46 @@ def download(url: str) -> bytes:
         return resp.read()
 
 
+# Phase 7.5 — MS column-index → canonical category.
+# col 4: Total Instruction
+# col 7: Total General Administration  } sum into administration
+# col 10: Total School Administration   }
+# col 13: Total Other Expenditures Instructional Support
+# col 16: Total Other Expenditures Noninstructional (mixed)
+# col 20: Capitalized Equipment Expenditures (capital_outlay)
+
+
+def _ms_components(r) -> dict[str, float]:
+    out: dict[str, float] = {}
+
+    def _add(category: str, col: int):
+        if col >= len(r):
+            return
+        v = r[col]
+        if v is None:
+            return
+        try:
+            f = float(v)
+        except (TypeError, ValueError):
+            return
+        if f > 0:
+            out[category] = out.get(category, 0.0) + f
+
+    _add("instruction", 4)
+    _add("administration", 7)
+    _add("administration", 10)
+    _add("support_services_instruction", 13)
+    _add("other", 16)
+    _add("capital_outlay", 20)
+    return out
+
+
 def parse_ms(xlsx_bytes: bytes) -> list[dict]:
     wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes), data_only=True)
-    # Sheet name has a trailing space in the published file
     sheet = wb.sheetnames[0]
     ws = wb[sheet]
     rows = ws.iter_rows(values_only=True)
     header = next(rows)
-    # Validate the crucial column at index 19.
     if not (header and len(header) > 19 and isinstance(header[19], str)
             and "Total Current Operational" in header[19]):
         raise RuntimeError(
@@ -116,7 +150,11 @@ def parse_ms(xlsx_bytes: bytes) -> list[dict]:
             continue
         if v <= 0:
             continue
-        out.append({"code": f"{d:04d}", "total_op_exp": v})
+        out.append({
+            "code": f"{d:04d}",
+            "total_op_exp": v,
+            "components": _ms_components(r),
+        })
     return out
 
 
@@ -193,6 +231,9 @@ def extract(*, fiscal_year: int = 2024, triggered_by: str = "manual") -> dict:
         print(f"  MDE districts with FY{fiscal_year} data: {len(district_data):,}")
 
         no_match: list[str] = []
+        n_components_inserted = 0
+        n_components_updated = 0
+        n_components_unchanged = 0
         for d in district_data:
             district = crosswalk.get(d["code"])
             if district is None:
@@ -208,16 +249,49 @@ def extract(*, fiscal_year: int = 2024, triggered_by: str = "manual") -> dict:
                 source_document_id=src_id,
                 extraction_run_id=run.run_id,
             )
-            _, changed = upsert_budget_event_with_supersession(
+            event_id, changed = upsert_budget_event_with_supersession(
                 client=client, event=event
             )
             run.records_extracted += 1
             if changed:
                 run.records_changed += 1
 
+            components: list[ComponentInput] = []
+            for category, amount in d.get("components", {}).items():
+                if amount <= 0:
+                    continue
+                components.append(
+                    ComponentInput(
+                        category=category,
+                        amount=float(amount),
+                        definition=(
+                            f"MDE Sup Annual Report Expenditures by Functional "
+                            f"Area XLSX, district col 0={d['code']}: per-row "
+                            f"sum of functional-area cols mapping to '{category}'"
+                        ),
+                        line_or_cell_reference=(
+                            f"Sheet 0; district {d['code']}; "
+                            f"per _ms_components"
+                        ),
+                    )
+                )
+            if components:
+                ins, upd, unch = upsert_components(
+                    client=client,
+                    budget_event_id=event_id,
+                    components=components,
+                )
+                n_components_inserted += ins
+                n_components_updated += upd
+                n_components_unchanged += unch
+
         print(
             f"  inserted/changed={run.records_changed}/{run.records_extracted}; "
             f"unmatched MDE codes (charters/special schools): {len(no_match)}"
+        )
+        print(
+            f"  components: inserted={n_components_inserted} "
+            f"updated={n_components_updated} unchanged={n_components_unchanged}"
         )
 
     return {

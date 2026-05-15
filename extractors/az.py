@@ -51,11 +51,13 @@ from supabase import Client
 
 from extractors._base import (
     BudgetEventInput,
+    ComponentInput,
     Run,
     fetch_all,
     sha256_bytes,
     upload_source_document,
     upsert_budget_event_with_supersession,
+    upsert_components,
     upsert_source_document_row,
 )
 
@@ -125,10 +127,33 @@ def _normalize_name(s: str) -> str:
     return s
 
 
+# Phase 7.5 — AZ SAFR function-block 0-indexed column ranges. Row 2 of
+# both District and Charter sheets labels these spans.
+# (1-indexed cols converted to 0-indexed half-open ranges below.)
+_AZ_FUNCTION_BLOCKS: list[tuple[str, range]] = [
+    ("instruction", range(3, 9)),            # F1000 Instruction (6 cols)
+    ("support_services_student", range(9, 15)),       # F2100 (6)
+    ("support_services_instruction", range(15, 21)),  # F2200 (6)
+    ("administration", range(21, 28)),       # F2300 Gen Admin (7)
+    ("administration", range(28, 34)),       # F2400 School Admin (6)
+    ("administration", range(34, 41)),       # F2500/2900 Central + Other (7)
+    ("operations_maintenance", range(41, 47)),        # F2600 (6)
+    ("transportation", range(47, 53)),       # F2700 (6)
+    ("food_service", range(53, 59)),         # F3100 (6)
+    # F3200 Enterprise (cols 59-64) and F3400 Bookstore (65-70) intentionally
+    # omitted from component breakdown — too small + no canonical match.
+]
+# Object 6200 (Employee Benefits) is at start+1 of each 6/7-col block.
+_AZ_BENEFITS_COLS_0IDX: tuple[int, ...] = (
+    4, 10, 16, 22, 29, 35, 42, 48, 54, 60, 66,
+)
+
+
 def parse_az_safr(xlsx_bytes: bytes) -> list[dict]:
-    """Return [{name, ctds, total_op_exp, kind}] from both Districts and
-    Charters sheets. Total = sum of all numeric cells from col D onwards
-    (Function block columns).
+    """Return [{name, ctds, total_op_exp, kind, components}] from both
+    Districts and Charters sheets. Total = sum of all numeric cells from
+    col D onwards (Function block columns); components decompose by
+    Function block per _AZ_FUNCTION_BLOCKS plus Object 6200 benefits.
     """
     wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes), data_only=True)
     out: list[dict] = []
@@ -143,18 +168,42 @@ def parse_az_safr(xlsx_bytes: bytes) -> list[dict]:
             ctds = ws.cell(row, 3).value
             if not name:
                 continue
-            total = 0.0
+            # Materialize row as list (1-indexed col→0-indexed-list value)
+            row_vals: list[float | None] = []
             for col in range(4, ws.max_column + 1):
                 v = ws.cell(row, col).value
-                if isinstance(v, (int, float)):
-                    total += v
+                row_vals.append(v if isinstance(v, (int, float)) else None)
+            total = sum(v for v in row_vals if v is not None)
             if total <= 0:
                 continue
+            # Phase 7.5 — canonical category breakdown. Note: row_vals is
+            # 0-indexed starting at original col 4, so subtract 3 from each
+            # 1-indexed col index used above.
+            offset = 3  # column D (1-indexed 4) → row_vals[0]
+            components: dict[str, float] = {}
+            for category, col_range in _AZ_FUNCTION_BLOCKS:
+                s = 0.0
+                for c in col_range:
+                    idx = c - offset
+                    if 0 <= idx < len(row_vals) and row_vals[idx]:
+                        s += row_vals[idx]
+                if s > 0:
+                    components[category] = components.get(category, 0.0) + s
+            # employee_benefits = sum of Object 6200 cols across function blocks
+            benefits = 0.0
+            for c in _AZ_BENEFITS_COLS_0IDX:
+                idx = c - offset
+                if 0 <= idx < len(row_vals) and row_vals[idx]:
+                    benefits += row_vals[idx]
+            if benefits > 0:
+                components["employee_benefits"] = benefits
+
             out.append({
                 "name": str(name).strip(),
                 "ctds": str(ctds).strip() if ctds else "",
                 "total_op_exp": total,
                 "kind": kind,
+                "components": components,
             })
     return out
 
@@ -250,6 +299,9 @@ def extract(*, fiscal_year: int = 2025, triggered_by: str = "manual") -> dict:
         print(f"  SAFR records (districts + charters): {len(records):,}")
 
         no_match: list[str] = []
+        n_components_inserted = 0
+        n_components_updated = 0
+        n_components_unchanged = 0
         for d in records:
             norm = _normalize_name(d["name"])
             district = by_norm.get(norm)
@@ -266,12 +318,43 @@ def extract(*, fiscal_year: int = 2025, triggered_by: str = "manual") -> dict:
                 source_document_id=src_id,
                 extraction_run_id=run.run_id,
             )
-            _, changed = upsert_budget_event_with_supersession(
+            event_id, changed = upsert_budget_event_with_supersession(
                 client=client, event=event
             )
             run.records_extracted += 1
             if changed:
                 run.records_changed += 1
+
+            components: list[ComponentInput] = []
+            for category, amount in d.get("components", {}).items():
+                if amount <= 0:
+                    continue
+                components.append(
+                    ComponentInput(
+                        category=category,
+                        amount=float(amount),
+                        definition=(
+                            f"ADE SAFR Digital Data XLSX, {d['kind']} sheet, "
+                            f"row matching name='{d['name']}' (CTDS={d['ctds']}): "
+                            f"sum of object cols within function block(s) "
+                            f"mapping to '{category}' (or Object 6200 across "
+                            f"all blocks for employee_benefits)"
+                        ),
+                        line_or_cell_reference=(
+                            f"Sheets District/Charter; row name={d['name']}; "
+                            f"per _AZ_FUNCTION_BLOCKS / _AZ_BENEFITS_COLS"
+                        ),
+                    )
+                )
+            if components:
+                ins, upd, unch = upsert_components(
+                    client=client,
+                    budget_event_id=event_id,
+                    components=components,
+                )
+                n_components_inserted += ins
+                n_components_updated += upd
+                n_components_unchanged += unch
 
         print(
             f"  inserted/changed={run.records_changed}/{run.records_extracted}; "
@@ -279,6 +362,10 @@ def extract(*, fiscal_year: int = 2025, triggered_by: str = "manual") -> dict:
         )
         if no_match[:5]:
             print(f"  sample unmatched: {no_match[:8]}")
+        print(
+            f"  components: inserted={n_components_inserted} "
+            f"updated={n_components_updated} unchanged={n_components_unchanged}"
+        )
 
     return {
         "fiscal_year": fiscal_year,

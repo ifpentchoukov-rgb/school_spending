@@ -37,11 +37,13 @@ from supabase import Client
 
 from extractors._base import (
     BudgetEventInput,
+    ComponentInput,
     Run,
     fetch_all,
     sha256_bytes,
     upload_source_document,
     upsert_budget_event_with_supersession,
+    upsert_components,
     upsert_source_document_row,
 )
 
@@ -117,6 +119,94 @@ def compute_topline(ugl: pd.DataFrame) -> pd.DataFrame:
         .reset_index()
         .rename(columns={"Value": "exp_total"})
     )
+    return out
+
+
+# Phase 7.5 — CA SACS Function code → canonical category. 4-digit
+# Function codes within topline filter (Funds 01-29, Object 1000-7999).
+def _ca_func_to_category(fn: int) -> str | None:
+    if 1000 <= fn <= 1999:
+        return "instruction"
+    if 2000 <= fn <= 2999:
+        return "support_services_instruction"
+    if 3100 <= fn <= 3199:
+        return "support_services_student"  # Counseling/Health/Psych
+    if 3600 <= fn <= 3699:
+        return "transportation"
+    if 3700 <= fn <= 3799:
+        return "food_service"
+    if 7000 <= fn <= 7999:
+        return "administration"
+    if 8000 <= fn <= 8999:
+        return "operations_maintenance"
+    if 9100 <= fn <= 9199:
+        return "debt_service"
+    return None
+
+
+def compute_components(ugl: pd.DataFrame) -> dict[tuple[str, str], dict[str, float]]:
+    """(Ccode, Dcode) → {canonical_category: amount}. Computed within the
+    same Funds 01-29 / Object 1000-7999 mask as topline so component
+    sums are a strict decomposition of the topline."""
+    df = ugl[["Ccode", "Dcode", "Fund", "Object", "Function", "Value"]].copy()
+    df["Value"] = pd.to_numeric(df["Value"], errors="coerce")
+    df["Object_int"] = pd.to_numeric(df["Object"], errors="coerce")
+    df["Fund_int"] = pd.to_numeric(df["Fund"], errors="coerce")
+    df["Function_int"] = pd.to_numeric(df["Function"], errors="coerce")
+    mask = (
+        df["Object_int"].between(1000, 7999, inclusive="both")
+        & df["Fund_int"].between(1, 29, inclusive="both")
+        & df["Function_int"].notna()
+    )
+    sub = df[mask].copy()
+    sub["category"] = sub["Function_int"].astype(int).apply(_ca_func_to_category)
+    func_rolled = (
+        sub[sub["category"].notna()]
+        .groupby(["Ccode", "Dcode", "category"])["Value"]
+        .sum()
+        .reset_index()
+    )
+    # Phase 7.5 — capital_outlay = Object 6000-6999 (within topline mask).
+    # Note SACS already captures this in topline (Object 6XXX is part of
+    # 1000-7999), so this is a *slice* of topline, not additive outside it.
+    cap_mask = (
+        df["Object_int"].between(6000, 6999, inclusive="both")
+        & df["Fund_int"].between(1, 29, inclusive="both")
+    )
+    cap = (
+        df[cap_mask]
+        .groupby(["Ccode", "Dcode"])["Value"]
+        .sum()
+        .reset_index()
+        .rename(columns={"Value": "amount"})
+    )
+    cap["category"] = "capital_outlay"
+    cap = cap[["Ccode", "Dcode", "category", "amount"]].rename(
+        columns={"amount": "Value"}
+    )
+    # employee_benefits = Object 3000-3999 (within topline mask)
+    ben_mask = (
+        df["Object_int"].between(3000, 3999, inclusive="both")
+        & df["Fund_int"].between(1, 29, inclusive="both")
+    )
+    ben = (
+        df[ben_mask]
+        .groupby(["Ccode", "Dcode"])["Value"]
+        .sum()
+        .reset_index()
+        .rename(columns={"Value": "amount"})
+    )
+    ben["category"] = "employee_benefits"
+    ben = ben[["Ccode", "Dcode", "category", "amount"]].rename(
+        columns={"amount": "Value"}
+    )
+    all_components = pd.concat([func_rolled, cap, ben], ignore_index=True)
+    out: dict[tuple[str, str], dict[str, float]] = {}
+    for _, r in all_components.iterrows():
+        key = (r["Ccode"], r["Dcode"])
+        out.setdefault(key, {})
+        out[key].setdefault(r["category"], 0.0)
+        out[key][r["category"]] += float(r["Value"])
     return out
 
 
@@ -200,6 +290,9 @@ def extract(*, fiscal_year: int = 2025, triggered_by: str = "manual") -> dict:
         ugl_curr, leas_curr = extract_mdb_tables(exe_curr, f"sacs{compact}.mdb")
         topline_curr = compute_topline(ugl_curr)
         print(f"    {len(topline_curr):,} (Ccode,Dcode) totals")
+        # Phase 7.5 — canonical category breakdown (current FY only)
+        components_curr = compute_components(ugl_curr)
+        print(f"    components computed for {len(components_curr):,} LEAs")
 
         print("  parsing UserGL from prior year for YoY baseline...")
         ugl_prior, _ = extract_mdb_tables(exe_prior, f"sacs{prior_compact}.mdb")
@@ -218,6 +311,9 @@ def extract(*, fiscal_year: int = 2025, triggered_by: str = "manual") -> dict:
 
         no_match = []
         no_topline = 0
+        n_components_inserted = 0
+        n_components_updated = 0
+        n_components_unchanged = 0
         for _, row in df.iterrows():
             district = crosswalk.get(row["cds_district"])
             if district is None:
@@ -247,16 +343,57 @@ def extract(*, fiscal_year: int = 2025, triggered_by: str = "manual") -> dict:
                 yoy_change_dollars=yoy_dollars,
                 prior_year_baseline=prior,
             )
-            _, changed = upsert_budget_event_with_supersession(
+            event_id, changed = upsert_budget_event_with_supersession(
                 client=client, event=event
             )
             run.records_extracted += 1
             if changed:
                 run.records_changed += 1
 
+            # Phase 7.5 — canonical category components
+            comp_dict = components_curr.get(
+                (row["Ccode"], row["Dcode"]), {}
+            )
+            components: list[ComponentInput] = []
+            for category, amount in comp_dict.items():
+                if amount <= 0:
+                    continue
+                components.append(
+                    ComponentInput(
+                        category=category,
+                        amount=float(amount),
+                        definition=(
+                            f"CDE SACS UserGL: sum Value where (Ccode, Dcode) "
+                            f"= ({row['Ccode']}, {row['Dcode']}) AND Fund "
+                            f"01-29 AND Object 1000-7999 AND Function maps to "
+                            f"'{category}' per _ca_func_to_category "
+                            f"(employee_benefits = Object 3000-3999; "
+                            f"capital_outlay = Object 6000-6999)"
+                        ),
+                        line_or_cell_reference=(
+                            f"sacs{compact}.mdb UserGL; Ccode={row['Ccode']} "
+                            f"Dcode={row['Dcode']}; per _ca_func_to_category "
+                            f"+ Object range slices"
+                        ),
+                    )
+                )
+            if components:
+                ins, upd, unch = upsert_components(
+                    client=client,
+                    budget_event_id=event_id,
+                    components=components,
+                )
+                n_components_inserted += ins
+                n_components_updated += upd
+                n_components_unchanged += unch
+
         print(
             f"  inserted/changed={run.records_changed}/{run.records_extracted}; "
             f"no-topline={no_topline}; unmatched LEAs={len(no_match)}"
+        )
+        print(
+            f"  components: inserted={n_components_inserted} "
+            f"updated={n_components_updated} unchanged={n_components_unchanged}"
         )
 
     return {

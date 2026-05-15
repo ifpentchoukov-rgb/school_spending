@@ -131,23 +131,20 @@ Per the May 2026 systematic deadline-order investigation: NC, TN, ID, SD (Jul de
 
 Cross-state comparability depends on how rich the source data is. The portal will surface a `coverage_tier` badge per state so users know what's apples-to-apples vs apples-to-oranges.
 
-**rich** (function/object detail extractable; can emit ≥8 canonical line-item categories from Phase 7's `expenditure_category` enum):
-- TX (PEIMS Object × Function grid)
-- MI (5 funds × all expenditure objects in Bulletin 1011)
-- IL (ISBE OEPP function detail)
-- PA (GFB FB_Cert function rows)
-- KY (Function 1000-3900 columns)
-- WI (7 per-FY cost columns: instruct + support + admin + operations + trans + facility + food)
-- KS (BAG page-4 category rows)
-- NY (ST-3 SAMS — 4,200+ line items via Legacy/RefKey columns; AT1XXX = Instruction, AT9098 = Employee Benefits, AT9898 = Debt Service, HT9999 = Capital, FT9999 = Federal/Special Aid)
+**rich** (function/object detail extractable; emits ≥7 canonical line-item categories from Phase 7's `expenditure_category` enum) — 19 states after Phase 7.5:
+- TX, MI, IL, PA, KY, WI, KS, NY *(Phase 7.4)*
+- GA, OH, VA, OR, OK *(Phase 7.5 batch 1)*
+- MT, ID, AZ, MN, CO, IA, CA *(Phase 7.5 batch 2)*
 
-**moderate** (fund-level or summary categories; can emit 2-5 canonical categories):
-OH, CO, IA, AR, OK, OR, WA, NJ, IN, MA, VA, GA, MO, MN, NE, TN, AZ, MS, ID, SD, ND, MT, UT, LA, FL, CA.
+**moderate** (fund-level or summary categories; emits 2-6 canonical categories) — 12 states:
+- AR, NJ, IN, LA *(Phase 7.5 batch 1, universal floor)*
+- UT, MS, SD, NE *(Phase 7.5 batch 2, universal floor)*
+- WA, FL, MA, TN, ND, MO *(skipped component emission — source is inherently topline-only)*
 
-**thin** (single topline only, often per-pupil reconstructed — Phase 7 will flag with `no_breakdown_available=true`):
+**thin** (single topline only, often per-pupil reconstructed — flagged with `no_breakdown_available=true`):
 AL, VT, NH, HI, ME, MD, SC, NC, DC, CT, WV.
 
-This classification is the seed for Phase 7.3's `state_extractor_metadata` migration. It will be revisited as we extract more line items from each state — some moderate-tier states may move to rich once we parse their function-code grids more aggressively (e.g. CA SACS has all the detail we need but our current extractor only reads the topline).
+**Cumulative Phase 7.4 + 7.5 component rows: ~65,600 across ~8,300 budget events.** All extractors idempotent (SELECT-then-diff in `upsert_components`).
 
 ## Reattack candidates (deferred but data quality is high once unblocked)
 

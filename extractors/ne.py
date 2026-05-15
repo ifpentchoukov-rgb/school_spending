@@ -45,11 +45,13 @@ from supabase import Client
 
 from extractors._base import (
     BudgetEventInput,
+    ComponentInput,
     Run,
     fetch_all,
     sha256_bytes,
     upload_source_document,
     upsert_budget_event_with_supersession,
+    upsert_components,
     upsert_source_document_row,
 )
 
@@ -73,6 +75,18 @@ TOPLINE_DEFINITION = (
 
 # General Fund Total Expenditures account (operating frame).
 TOPLINE_ACCOUNT = "01-2-20400-000"
+
+# Phase 7.5 — NE per-fund Total Disbursements accounts (XX-2-20500-000)
+# map to canonical categories. Fund 01 (General Fund) is the topline so
+# not repeated here. Funds 04 (cooperative), 05 (activity), 09 (bond
+# proceeds), 12 (student fees) are intentionally omitted.
+_NE_FUND_TO_CATEGORY: dict[str, str] = {
+    "02": "capital_outlay",  # Special Building
+    "06": "debt_service",     # Debt Service
+    "07": "capital_outlay",  # Capital Construction
+    "08": "capital_outlay",  # Building
+    "10": "food_service",     # School Nutrition
+}
 
 
 def _afr_url(fiscal_year: int) -> str:
@@ -137,12 +151,14 @@ def parse_ne_afr(zip_bytes: bytes) -> list[dict]:
     except ValueError as e:
         raise RuntimeError(f"Missing AFR column: {e}") from e
 
-    out: list[dict] = []
+    # First pass: collect topline (Fund 01 Total Expenditures) per agency
+    # and per-fund Total Disbursements for canonical-category components.
+    totals: dict[str, float] = {}
+    components: dict[str, dict[str, float]] = {}
     for row in rows:
         if not row or row[i_agency] is None or row[i_acct] is None:
             continue
-        if str(row[i_acct]).strip() != TOPLINE_ACCOUNT:
-            continue
+        acct = str(row[i_acct]).strip()
         try:
             amt = float(row[i_amt] or 0)
         except (TypeError, ValueError):
@@ -150,9 +166,22 @@ def parse_ne_afr(zip_bytes: bytes) -> list[dict]:
         if amt <= 0:
             continue
         agency = str(row[i_agency]).strip()
+        if acct == TOPLINE_ACCOUNT:
+            totals[agency] = amt
+            continue
+        # Per-fund Total Disbursements: XX-2-20500-000
+        if acct.endswith("-2-20500-000"):
+            fund_prefix = acct.split("-", 1)[0]
+            category = _NE_FUND_TO_CATEGORY.get(fund_prefix)
+            if category:
+                components.setdefault(agency, {}).setdefault(category, 0.0)
+                components[agency][category] += amt
+    out: list[dict] = []
+    for agency, amt in totals.items():
         out.append({
             "agency_id": agency,
             "total_op_exp": amt,
+            "components": components.get(agency, {}),
         })
     return out
 
@@ -233,6 +262,9 @@ def extract(*, fiscal_year: int = 2025, triggered_by: str = "manual") -> dict:
         print(f"  AFR records (General Fund expenditures): {len(records):,}")
 
         no_match: list[str] = []
+        n_components_inserted = 0
+        n_components_updated = 0
+        n_components_unchanged = 0
         for d in records:
             # AgencyID in file = '55-0001-000'; state_leaid suffix = '550001000'
             key = d["agency_id"].replace("-", "")
@@ -250,12 +282,42 @@ def extract(*, fiscal_year: int = 2025, triggered_by: str = "manual") -> dict:
                 source_document_id=src_id,
                 extraction_run_id=run.run_id,
             )
-            _, changed = upsert_budget_event_with_supersession(
+            event_id, changed = upsert_budget_event_with_supersession(
                 client=client, event=event
             )
             run.records_extracted += 1
             if changed:
                 run.records_changed += 1
+
+            components: list[ComponentInput] = []
+            for category, amount in d.get("components", {}).items():
+                if amount <= 0:
+                    continue
+                components.append(
+                    ComponentInput(
+                        category=category,
+                        amount=float(amount),
+                        definition=(
+                            f"NE SFOS AFR: sum of accounts 'XX-2-20500-000' "
+                            f"(Total Disbursements) for fund(s) mapping to "
+                            f"'{category}' per _NE_FUND_TO_CATEGORY "
+                            f"(02/07/08=capital, 06=debt, 10=food)"
+                        ),
+                        line_or_cell_reference=(
+                            f"AgencyID {d['agency_id']}; XX-2-20500-000 "
+                            f"per-fund Total Disbursements"
+                        ),
+                    )
+                )
+            if components:
+                ins, upd, unch = upsert_components(
+                    client=client,
+                    budget_event_id=event_id,
+                    components=components,
+                )
+                n_components_inserted += ins
+                n_components_updated += upd
+                n_components_unchanged += unch
 
         print(
             f"  inserted/changed={run.records_changed}/{run.records_extracted}; "
@@ -263,6 +325,10 @@ def extract(*, fiscal_year: int = 2025, triggered_by: str = "manual") -> dict:
         )
         if no_match[:5]:
             print(f"  sample unmatched: {no_match[:8]}")
+        print(
+            f"  components: inserted={n_components_inserted} "
+            f"updated={n_components_updated} unchanged={n_components_unchanged}"
+        )
 
     return {
         "fiscal_year": fiscal_year,

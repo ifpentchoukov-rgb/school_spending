@@ -36,11 +36,13 @@ from supabase import Client
 
 from extractors._base import (
     BudgetEventInput,
+    ComponentInput,
     Run,
     fetch_all,
     sha256_bytes,
     upload_source_document,
     upsert_budget_event_with_supersession,
+    upsert_components,
     upsert_source_document_row,
 )
 
@@ -86,7 +88,6 @@ def parse_sd(xlsx_bytes: bytes) -> list[dict]:
             district_num = int(r[1])
         except (TypeError, ValueError):
             continue
-        # Skip aggregate rows
         if district_num <= 0:
             continue
         try:
@@ -97,9 +98,22 @@ def parse_sd(xlsx_bytes: bytes) -> list[dict]:
         total = gen_imp + sped
         if total <= 0:
             continue
+        # Phase 7.5 — canonical components. r[8] = Capital Outlay Fund 21
+        # Expenditures (excluded from topline). r[11] = Special Ed Fund 22
+        # Expenditures (included in topline; maps to support_services_student).
+        components: dict[str, float] = {}
+        try:
+            cap = float(r[8]) if r[8] is not None else 0.0
+        except (TypeError, ValueError):
+            cap = 0.0
+        if cap > 0:
+            components["capital_outlay"] = cap
+        if sped > 0:
+            components["support_services_student"] = sped
         out.append({
             "code": f"{district_num:05d}",
             "total_op_exp": total,
+            "components": components,
         })
     return out
 
@@ -176,6 +190,9 @@ def extract(*, fiscal_year: int = 2025, triggered_by: str = "manual") -> dict:
         print(f"  SD DOE districts: {len(district_data):,}")
 
         no_match: list[str] = []
+        n_components_inserted = 0
+        n_components_updated = 0
+        n_components_unchanged = 0
         for d in district_data:
             district = crosswalk.get(d["code"])
             if district is None:
@@ -191,16 +208,49 @@ def extract(*, fiscal_year: int = 2025, triggered_by: str = "manual") -> dict:
                 source_document_id=src_id,
                 extraction_run_id=run.run_id,
             )
-            _, changed = upsert_budget_event_with_supersession(
+            event_id, changed = upsert_budget_event_with_supersession(
                 client=client, event=event
             )
             run.records_extracted += 1
             if changed:
                 run.records_changed += 1
 
+            components: list[ComponentInput] = []
+            for category, amount in d.get("components", {}).items():
+                if amount <= 0:
+                    continue
+                components.append(
+                    ComponentInput(
+                        category=category,
+                        amount=float(amount),
+                        definition=(
+                            f"SD DOE All Expenditures workbook 'Exp&FB' sheet, "
+                            f"district {d['code']}: col 9 Capital Outlay Fund "
+                            f"21 Expenditures (capital_outlay) / col 12 Special "
+                            f"Education Fund 22 Expenditures (support_services_student)"
+                        ),
+                        line_or_cell_reference=(
+                            f"Sheet 'Exp&FB'; district {d['code']}"
+                        ),
+                    )
+                )
+            if components:
+                ins, upd, unch = upsert_components(
+                    client=client,
+                    budget_event_id=event_id,
+                    components=components,
+                )
+                n_components_inserted += ins
+                n_components_updated += upd
+                n_components_unchanged += unch
+
         print(
             f"  inserted/changed={run.records_changed}/{run.records_extracted}; "
             f"unmatched SD codes: {len(no_match)}"
+        )
+        print(
+            f"  components: inserted={n_components_inserted} "
+            f"updated={n_components_updated} unchanged={n_components_unchanged}"
         )
 
     return {

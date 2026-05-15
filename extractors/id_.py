@@ -39,11 +39,13 @@ from supabase import Client
 
 from extractors._base import (
     BudgetEventInput,
+    ComponentInput,
     Run,
     fetch_all,
     sha256_bytes,
     upload_source_document,
     upsert_budget_event_with_supersession,
+    upsert_components,
     upsert_source_document_row,
 )
 
@@ -77,6 +79,18 @@ def download(url: str) -> bytes:
         return resp.read()
 
 
+# Phase 7.5 — ID column-index → canonical category. ISDE All-Funds sheet
+# has cols: 0=district#, 1=name, 2=Instruction, 3=Support Services,
+# 4=Non-Instructional, 5=Capital Assets, 6=Debt Services, 7=Total.
+_ID_COL_TO_CATEGORY: dict[int, str] = {
+    2: "instruction",
+    3: "support_services_instruction",
+    4: "food_service",  # Non-Instructional ≈ food service + community
+    5: "capital_outlay",
+    6: "debt_service",
+}
+
+
 def parse_id(xlsx_bytes: bytes, fiscal_year: int) -> list[dict]:
     wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes), read_only=True, data_only=True)
     # Sheet name pattern varies slightly: "FY{YYYY} All Funds Expd & by ADA"
@@ -93,18 +107,15 @@ def parse_id(xlsx_bytes: bytes, fiscal_year: int) -> list[dict]:
     ws = wb[target]
     out: list[dict] = []
     rows = ws.iter_rows(values_only=True)
-    # Skip 3 title rows; row index 2 has 'School District / Charter School' header
     for r in rows:
         if not r:
             continue
-        # Data rows start when col 0 is an int (district number)
         if not isinstance(r[0], (int, float)):
             continue
         try:
             d = int(r[0])
         except (TypeError, ValueError):
             continue
-        # Sum cols 2 (Instruction), 3 (Support Services), 4 (Non-Instructional)
         total = 0.0
         for c in (2, 3, 4):
             v = r[c] if c < len(r) else None
@@ -116,7 +127,23 @@ def parse_id(xlsx_bytes: bytes, fiscal_year: int) -> list[dict]:
                 continue
         if total <= 0:
             continue
-        out.append({"code": f"{d:03d}", "total_op_exp": total})
+        # Phase 7.5 — canonical category breakdown
+        components: dict[str, float] = {}
+        for col, category in _ID_COL_TO_CATEGORY.items():
+            v = r[col] if col < len(r) else None
+            if v is None:
+                continue
+            try:
+                f = float(v)
+            except (TypeError, ValueError):
+                continue
+            if f > 0:
+                components[category] = components.get(category, 0.0) + f
+        out.append({
+            "code": f"{d:03d}",
+            "total_op_exp": total,
+            "components": components,
+        })
     return out
 
 
@@ -192,6 +219,9 @@ def extract(*, fiscal_year: int = 2024, triggered_by: str = "manual") -> dict:
         print(f"  ISDE districts with FY{fiscal_year} data: {len(district_data):,}")
 
         no_match: list[str] = []
+        n_components_inserted = 0
+        n_components_updated = 0
+        n_components_unchanged = 0
         for d in district_data:
             district = crosswalk.get(d["code"])
             if district is None:
@@ -207,16 +237,50 @@ def extract(*, fiscal_year: int = 2024, triggered_by: str = "manual") -> dict:
                 source_document_id=src_id,
                 extraction_run_id=run.run_id,
             )
-            _, changed = upsert_budget_event_with_supersession(
+            event_id, changed = upsert_budget_event_with_supersession(
                 client=client, event=event
             )
             run.records_extracted += 1
             if changed:
                 run.records_changed += 1
 
+            components: list[ComponentInput] = []
+            for category, amount in d.get("components", {}).items():
+                if amount <= 0:
+                    continue
+                components.append(
+                    ComponentInput(
+                        category=category,
+                        amount=float(amount),
+                        definition=(
+                            f"ISDE 20-Year R&E 'All Funds Expd & by ADA' sheet, "
+                            f"district col 0={d['code']} → category '{category}' "
+                            f"per ID-bucketing of cols Instruction/Support/"
+                            f"Non-Instructional/Capital/Debt"
+                        ),
+                        line_or_cell_reference=(
+                            f"Sheet 'FY{fiscal_year} All Funds Expd & by ADA'; "
+                            f"district {d['code']}; per _ID_COL_TO_CATEGORY"
+                        ),
+                    )
+                )
+            if components:
+                ins, upd, unch = upsert_components(
+                    client=client,
+                    budget_event_id=event_id,
+                    components=components,
+                )
+                n_components_inserted += ins
+                n_components_updated += upd
+                n_components_unchanged += unch
+
         print(
             f"  inserted/changed={run.records_changed}/{run.records_extracted}; "
             f"unmatched ID codes (charters/specialty): {len(no_match)}"
+        )
+        print(
+            f"  components: inserted={n_components_inserted} "
+            f"updated={n_components_updated} unchanged={n_components_unchanged}"
         )
 
     return {

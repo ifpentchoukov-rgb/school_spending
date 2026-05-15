@@ -51,11 +51,13 @@ from supabase import Client
 
 from extractors._base import (
     BudgetEventInput,
+    ComponentInput,
     Run,
     fetch_all,
     sha256_bytes,
     upload_source_document,
     upsert_budget_event_with_supersession,
+    upsert_components,
     upsert_source_document_row,
 )
 
@@ -120,10 +122,31 @@ def download(url: str, *, max_attempts: int = 5) -> bytes:
     )
 
 
+# Phase 7.5 — CO Org_Explore_More (CATEGORY, ROLLUP) → canonical category.
+# Each district's spending lands at SUB_ROLLUP='None' for each Rollup.
+_CO_ROLLUP_TO_CATEGORY: dict[tuple[str, str], str] = {
+    ("Learning Environment", "Instructional"): "instruction",
+    ("Learning Environment", "District Administration"): "administration",
+    ("Learning Environment", "School Administration"): "administration",
+    ("Learning Environment", "Staff Support"): "support_services_instruction",
+    ("Learning Environment", "Student Support"): "support_services_student",
+    ("Operations", "Food Services"): "food_service",
+    ("Operations", "Operations Maintenance"): "operations_maintenance",
+    ("Operations", "Transportation"): "transportation",
+    ("Operations", "Other Support"): "other",
+    ("Construction, Debt, Refinancing & Other",
+     "Construction Facilities Acquisitions And Construction Services"):
+        "capital_outlay",
+    ("Construction, Debt, Refinancing & Other", "Debt Services & Other Uses"):
+        "debt_service",
+}
+
+
 def parse_co_ft(xlsx_bytes: bytes) -> list[dict]:
-    """Return [{org_code, total_op_exp}] from the Financial Transparency
-    XLSX. Sums the 'Learning Environment' + 'Operations' Spending rows
-    per ORG_CODE (excludes 'Construction, Debt, Refinancing & Other')."""
+    """Return [{org_code, total_op_exp, components}] from the Financial
+    Transparency XLSX. Topline = Org_Spending_Funding sum of Learning
+    Environment + Operations. Components from Org_Explore_More keyed by
+    (CATEGORY, ROLLUP) with SUB_ROLLUP='None'."""
     wb = openpyxl.load_workbook(
         io.BytesIO(xlsx_bytes), data_only=True, read_only=True
     )
@@ -132,9 +155,9 @@ def parse_co_ft(xlsx_bytes: bytes) -> list[dict]:
             f"Expected sheet 'Org_Spending_Funding' not found. "
             f"Sheets: {wb.sheetnames}"
         )
-    ws = wb["Org_Spending_Funding"]
 
-    # Read header
+    # --- Topline pass (Org_Spending_Funding) ---
+    ws = wb["Org_Spending_Funding"]
     rows = ws.iter_rows(values_only=True)
     header = next(rows)
     try:
@@ -167,8 +190,61 @@ def parse_co_ft(xlsx_bytes: bytes) -> list[dict]:
         if not org:
             continue
         totals[org] = totals.get(org, 0.0) + amt_f
+
+    # --- Component pass (Org_Explore_More) ---
+    components: dict[str, dict[str, float]] = {}
+    if "Org_Explore_More" in wb.sheetnames:
+        ws2 = wb["Org_Explore_More"]
+        rows2 = ws2.iter_rows(values_only=True)
+        header2 = next(rows2)
+        try:
+            i2_org = header2.index("ORG_CODE")
+            i2_sf = header2.index("SPENDING_FUNDING")
+            i2_cat = header2.index("CATEGORY")
+            i2_roll = header2.index("ROLLUP")
+            i2_sub = header2.index("SUB_ROLLUP")
+            i2_amt = header2.index("AMOUNT")
+        except ValueError:
+            i2_org = None
+        if i2_org is not None:
+            for row in rows2:
+                if not row or row[i2_org] is None:
+                    continue
+                if row[i2_sf] != "Spending":
+                    continue
+                cat = str(row[i2_cat]) if row[i2_cat] else ""
+                roll = str(row[i2_roll]) if row[i2_roll] else ""
+                sub = row[i2_sub]
+                amt = row[i2_amt]
+                if amt is None:
+                    continue
+                try:
+                    amt_f = float(amt)
+                except (TypeError, ValueError):
+                    continue
+                if amt_f <= 0:
+                    continue
+                org = str(row[i2_org]).strip().zfill(4)
+                # Map (CATEGORY, ROLLUP) → canonical, SUB_ROLLUP must be
+                # None (the rollup total slice).
+                category = _CO_ROLLUP_TO_CATEGORY.get((cat, roll))
+                if category and sub is None:
+                    components.setdefault(org, {}).setdefault(category, 0.0)
+                    components[org][category] += amt_f
+                # employee_benefits = sum of ('Spending Overview', 'Benefits', X)
+                # across all personnel-type sub_rollups (no None aggregate).
+                if cat == "Spending Overview" and roll == "Benefits" and sub:
+                    components.setdefault(org, {}).setdefault(
+                        "employee_benefits", 0.0
+                    )
+                    components[org]["employee_benefits"] += amt_f
+
     return [
-        {"org_code": k, "total_op_exp": v}
+        {
+            "org_code": k,
+            "total_op_exp": v,
+            "components": components.get(k, {}),
+        }
         for k, v in totals.items()
         if v > 0
     ]
@@ -268,6 +344,9 @@ def extract(*, fiscal_year: int = 2024, triggered_by: str = "manual",
         print(f"  CDE records (Spending operating): {len(records):,}")
 
         no_match: list[str] = []
+        n_components_inserted = 0
+        n_components_updated = 0
+        n_components_unchanged = 0
         for d in records:
             district = crosswalk.get(d["org_code"])
             if district is None:
@@ -283,12 +362,43 @@ def extract(*, fiscal_year: int = 2024, triggered_by: str = "manual",
                 source_document_id=src_id,
                 extraction_run_id=run.run_id,
             )
-            _, changed = upsert_budget_event_with_supersession(
+            event_id, changed = upsert_budget_event_with_supersession(
                 client=client, event=event
             )
             run.records_extracted += 1
             if changed:
                 run.records_changed += 1
+
+            components: list[ComponentInput] = []
+            for category, amount in d.get("components", {}).items():
+                if amount <= 0:
+                    continue
+                components.append(
+                    ComponentInput(
+                        category=category,
+                        amount=float(amount),
+                        definition=(
+                            f"CDE Financial Transparency 'Org_Explore_More' "
+                            f"sheet: (CATEGORY, ROLLUP) mapping to '{category}' "
+                            f"with SUB_ROLLUP=None (rollup total slice). For "
+                            f"employee_benefits: sum of ('Spending Overview', "
+                            f"'Benefits', *) across personnel-type sub-rollups."
+                        ),
+                        line_or_cell_reference=(
+                            f"Sheet 'Org_Explore_More'; ORG_CODE={d['org_code']}; "
+                            f"per _CO_ROLLUP_TO_CATEGORY"
+                        ),
+                    )
+                )
+            if components:
+                ins, upd, unch = upsert_components(
+                    client=client,
+                    budget_event_id=event_id,
+                    components=components,
+                )
+                n_components_inserted += ins
+                n_components_updated += upd
+                n_components_unchanged += unch
 
         print(
             f"  inserted/changed={run.records_changed}/{run.records_extracted}; "
@@ -297,6 +407,10 @@ def extract(*, fiscal_year: int = 2024, triggered_by: str = "manual",
         )
         if no_match[:5]:
             print(f"  sample unmatched: {no_match[:8]}")
+        print(
+            f"  components: inserted={n_components_inserted} "
+            f"updated={n_components_updated} unchanged={n_components_unchanged}"
+        )
 
     return {
         "fiscal_year": fiscal_year,
