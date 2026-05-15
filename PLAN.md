@@ -1149,7 +1149,7 @@ NY was the biggest deferred state at 2.36M enrollment and the prior deferral not
     - **IL: demoted to moderate** — OEPP-PCTC file is topline-only; no function/object breakdown. IL state_extractor_metadata.coverage_tier updated. ISBE AFR (IWAS-gated) would unlock rich tier; queued.
     
     **Total: 35,960 component rows across 3,621 budget events.** All extractors idempotent.
-- [~] **7.5 — Universal floor pass (in progress 2026-05-15).** Working through moderate-tier states; 8 of 26 done. 5 promoted to rich tier along the way (net +5 rich states).
+- [~] **7.5 — Universal floor pass (in progress 2026-05-15).** Working through moderate-tier states; 9 of 26 done. 5 promoted to rich tier along the way (net +5 rich states, so 12 rich total).
     - **GA → rich**: 184 districts × 9 categories = **1,345** components (GOSA Rev/Exp 11 DESCRIPTION values → canonical mapping)
     - **OH → rich**: 606 × 8 = **4,847** (Cupp Report per-pupil cols × ADM)
     - **VA → rich**: 101 × 8 = **808** (APA Exhibit C6 — 5 exp + 3 revenue)
@@ -1158,9 +1158,10 @@ NY was the biggest deferred state at 2.36M enrollment and the prior deferral not
     - **NJ (mod)**: 231 × 3 = **684** (TGES per-pupil × enrollment: capital, food, debt only)
     - **IN (mod)**: 290 × ~2 = **542** (SCFI Fund Classification: Debt + Capital + Capital/Safety Referendum)
     - **LA (mod)**: 69 × ~4 = **271** (AFSR Item 9 Categories E11-E18 instruction, E31 food, E41 capital, E51 debt)
-    - **Total so far: 13,482 components across 2,055 events.**
+    - **AR (mod)**: 244 × 2 = **477** (ASR PDF lines 77, 78: capital + debt)
+    - **Total so far: 13,959 components across ~2,299 events** (in addition to Phase 7.4's 35,960 = **49,919 grand total**).
     - **Skipped (no per-district breakdown in source):** WA — F-196 detail sheets are state-level aggregates only.
-    - **Remaining moderate-tier (17, ranked by enrollment):** CA (SACS MDB has full Object×Function — needs mdbtools install), FL, CO, MA, MO, MN, TN, AZ, IA, AR, UT, MS, NE, ID, SD, ND, MT. Each ~30-90 min depending on source format.
+    - **Remaining moderate-tier (17, ranked by enrollment):** CA (SACS MDB has full Object×Function — needs mdbtools install for Function-level breakdown; current extractor only sums Object), FL, CO, MA, MO, MN, TN, AZ, IA, UT, MS, NE, ID, SD, ND, MT. Each ~30-90 min depending on source format — TN/MA have topline-only sources; AZ/IA need function-grid inspection; CA is the biggest opportunity (could become rich) but heaviest.
 - [ ] **7.6 — `v_per_pupil_metrics` view.** Joins `budget_events`, `districts`, `budget_event_components` to expose `topline_per_pupil`, plus per-category per-pupil columns. Used by §9 rankings and §10 API.
 
 **Acceptance:** rich-tier states emit ≥8 components per non-superseded event; moderate-tier emit ≥2; thin-tier flagged. `v_per_pupil_metrics` returns a row for every non-superseded budget_event with a positive enrollment_fy25.

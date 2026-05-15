@@ -38,11 +38,13 @@ from supabase import Client
 
 from extractors._base import (
     BudgetEventInput,
+    ComponentInput,
     Run,
     fetch_all,
     sha256_bytes,
     upload_source_document,
     upsert_budget_event_with_supersession,
+    upsert_components,
     upsert_source_document_row,
 )
 
@@ -66,6 +68,18 @@ LEA_RE = re.compile(r"LEA:\s*(\d{7})")
 # embedded spaces in the rendered numbers.
 LINE_79_RE = re.compile(
     r"^\s*79\s+Total Current Expenditures\s+([\d,]+)\s+", re.MULTILINE
+)
+# Phase 7.5 — Line 77 Capital Expenditures + Line 78 Debt Service.
+# ASR renders these as "Less: Capital Expenditures (NNN,NNN) -NNN,NNN"
+# meaning they're subtracted from Total Expenditures to derive Total
+# Current Expenditures (line 79). Values in parentheses are positive
+# dollar amounts. Line 77 sometimes has line 76 text bleed through
+# ("Special Education: 77 ..."), so match anywhere on the line.
+LINE_77_RE = re.compile(
+    r"\b77\s+Less:\s*Capital Expenditures\s+\(?([\d,]+)\)?", re.MULTILINE
+)
+LINE_78_RE = re.compile(
+    r"\b78\s+Less:\s*Debt Service\s+\(?([\d,]+)\)?", re.MULTILINE
 )
 
 KNOWN_FILE_URLS: dict[int, str] = {
@@ -104,7 +118,25 @@ def parse_asr(pdf_bytes: bytes) -> list[dict]:
         if amt <= 0:
             continue
         seen_codes.add(code)
-        out.append({"code": code, "total_op_exp": amt})
+        # Phase 7.5 — capital + debt from lines 77, 78 (Actual column)
+        components: dict[str, float] = {}
+        m_77 = LINE_77_RE.search(text)
+        if m_77:
+            try:
+                components["capital_outlay"] = float(m_77.group(1).replace(",", ""))
+            except ValueError:
+                pass
+        m_78 = LINE_78_RE.search(text)
+        if m_78:
+            try:
+                components["debt_service"] = float(m_78.group(1).replace(",", ""))
+            except ValueError:
+                pass
+        out.append({
+            "code": code,
+            "total_op_exp": amt,
+            "components": components,
+        })
     pdf.close()
     return out
 
@@ -182,6 +214,9 @@ def extract(*, fiscal_year: int = 2024, triggered_by: str = "manual") -> dict:
         print(f"  ASR districts parsed: {len(district_data):,}")
 
         no_match: list[str] = []
+        n_components_inserted = 0
+        n_components_updated = 0
+        n_components_unchanged = 0
         for d in district_data:
             district = crosswalk.get(d["code"])
             if district is None:
@@ -197,16 +232,50 @@ def extract(*, fiscal_year: int = 2024, triggered_by: str = "manual") -> dict:
                 source_document_id=src_id,
                 extraction_run_id=run.run_id,
             )
-            _, changed = upsert_budget_event_with_supersession(
+            event_id, changed = upsert_budget_event_with_supersession(
                 client=client, event=event
             )
             run.records_extracted += 1
             if changed:
                 run.records_changed += 1
 
+            # Phase 7.5 — capital + debt from lines 77, 78.
+            components: list[ComponentInput] = []
+            for category, amount in d.get("components", {}).items():
+                if amount <= 0:
+                    continue
+                line_num = "77" if category == "capital_outlay" else "78"
+                desc = "Capital Expenditures" if category == "capital_outlay" else "Debt Service"
+                components.append(
+                    ComponentInput(
+                        category=category,
+                        amount=float(amount),
+                        definition=(
+                            f"ADE/DESE ASR PDF: Line {line_num} '{desc}', "
+                            f"Actual column — per-district page"
+                        ),
+                        line_or_cell_reference=(
+                            f"PDF page for LEA {d['code']}, line {line_num}"
+                        ),
+                    )
+                )
+            if components:
+                ins, upd, unch = upsert_components(
+                    client=client,
+                    budget_event_id=event_id,
+                    components=components,
+                )
+                n_components_inserted += ins
+                n_components_updated += upd
+                n_components_unchanged += unch
+
         print(
             f"  inserted/changed={run.records_changed}/{run.records_extracted}; "
             f"unmatched ASR LEA codes (charters/ESCs): {len(no_match)}"
+        )
+        print(
+            f"  components: inserted={n_components_inserted} "
+            f"updated={n_components_updated} unchanged={n_components_unchanged}"
         )
 
     return {
