@@ -84,8 +84,16 @@ def run_extractor(spec: ExtractorSpec, runner_fy: int, triggered_by: str) -> Job
         job.status = "failed"
         job.error = f"SystemExit: {e}"
     except Exception as e:
-        job.status = "failed"
-        job.error = f"{type(e).__name__}: {e}"
+        # Late-binding import — this module is also imported by the daily
+        # runner before extractors[] is populated, so importing at module
+        # scope would be fine, but keeping it here documents the linkage.
+        from extractors._exceptions import SourceNotYetPublished
+        if isinstance(e, SourceNotYetPublished):
+            job.status = "partial"
+            job.error = f"SourceNotYetPublished: {e}"
+        else:
+            job.status = "failed"
+            job.error = f"{type(e).__name__}: {e}"
     return job
 
 

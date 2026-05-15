@@ -81,8 +81,17 @@ def file_url(fiscal_year: int) -> str:
 
 def download(url: str) -> bytes:
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
-    with urllib.request.urlopen(req, timeout=120) as resp:
-        return resp.read()
+    try:
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            return resp.read()
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            from extractors._exceptions import SourceNotYetPublished
+            raise SourceNotYetPublished(
+                f"PA GFB 404 at {url} — FY27 GFB certifies ~Sept 2026 per "
+                "24 P.S. § 6-687; not yet published."
+            ) from e
+        raise
 
 
 def parse_fb_cert(xlsx_bytes: bytes) -> list[dict]:

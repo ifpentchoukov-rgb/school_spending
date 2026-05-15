@@ -147,8 +147,10 @@ def extract(*, fiscal_year: int = 2026, triggered_by: str = "manual") -> dict:
 
         url = file_url(fiscal_year)
         if not url:
-            raise RuntimeError(
-                f"No NJ UFB URL for fiscal_year={fiscal_year}; add to KNOWN_FILE_URLS."
+            from extractors._exceptions import SourceNotYetPublished
+            raise SourceNotYetPublished(
+                f"No NJ UFB URL for fiscal_year={fiscal_year}; districts file May "
+                "15 → June; add to KNOWN_FILE_URLS once published."
             )
         print(f"  downloading {url.rsplit('/', 1)[-1]}...")
         csv_bytes = download(url)

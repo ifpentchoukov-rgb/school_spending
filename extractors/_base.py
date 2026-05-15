@@ -28,6 +28,7 @@ from typing import Iterator
 from supabase import Client
 
 from extractors._client import get_client
+from extractors._exceptions import SourceNotYetPublished
 
 
 @dataclass
@@ -72,10 +73,17 @@ class Run:
     def __exit__(self, exc_type, exc, tb) -> bool:
         status = "success"
         if exc is not None:
-            status = "failed"
-            self.error_summary = (
-                "".join(traceback.format_exception(exc_type, exc, tb))[-2000:]
-            )
+            if isinstance(exc, SourceNotYetPublished):
+                # Expected pre-publication state — surface as `partial`
+                # so check_failures doesn't keep paging on it. Just the
+                # message, no traceback.
+                status = "partial"
+                self.error_summary = f"SourceNotYetPublished: {exc}"
+            else:
+                status = "failed"
+                self.error_summary = (
+                    "".join(traceback.format_exception(exc_type, exc, tb))[-2000:]
+                )
         self.client.table("extraction_runs").update(
             {
                 "finished_at": datetime.now(timezone.utc).isoformat(),
