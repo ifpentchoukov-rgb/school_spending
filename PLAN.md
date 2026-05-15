@@ -1131,12 +1131,13 @@ NY was the biggest deferred state at 2.36M enrollment and the prior deferral not
 
 **Goal:** decompose `topline_amount` into comparable line items so cross-state queries can ask "what's median per-pupil debt service?" or "show me districts where instruction is < 50% of operating." Tiered approach: universal floor every state can hit + rich-data depth where source allows.
 
-- [ ] **7.1 — Canonical category taxonomy + `expenditure_category` enum** (migration 0010 part 1). Categories: `instruction`, `support_services_student`, `support_services_instruction`, `administration`, `operations_maintenance`, `transportation`, `food_service`, `employee_benefits`, `capital_outlay`, `debt_service`, `revenue_federal`, `revenue_state`, `revenue_local`, `other`.
-- [ ] **7.2 — `budget_event_components` table** (migration 0010 part 2). FK to `budget_events(id)` with ON DELETE CASCADE; UNIQUE `(budget_event_id, category)`. Anonymous read of non-superseded events; service role writes. Mirrors `budget_events` RLS.
-- [ ] **7.3 — Coverage tiers per state** (migration 0010 part 3). New `state_extractor_metadata` table with `coverage_tier text CHECK (coverage_tier IN ('rich', 'moderate', 'thin'))`. Initial classification per the survey in [docs/STATUS.md](docs/STATUS.md):
-    - **rich** (object/function detail extractable): TX, MI, IL, PA, KY, WI, KS, NY.
-    - **moderate** (fund-level or summary categories): OH, CO, IA, AR, OK, OR, WA, NJ, IN, MA, VA, GA, MO, MN, NE, TN, AZ, MS, ID, SD, ND, MT, UT, LA, FL, CA.
-    - **thin** (single topline or per-pupil reconstructed): AL, VT, NH, HI, ME, MD, SC, NC, DC, CT, WV.
+- [x] **7.1 — Canonical category taxonomy + `expenditure_category` enum** (migration 0010 part 1). 14 categories: `instruction`, `support_services_student`, `support_services_instruction`, `administration`, `operations_maintenance`, `transportation`, `food_service`, `employee_benefits`, `capital_outlay`, `debt_service`, `revenue_federal`, `revenue_state`, `revenue_local`, `other`. Applied 2026-05-15.
+- [x] **7.2 — `budget_event_components` table** (migration 0010 part 2). FK to `budget_events(id)` with ON DELETE CASCADE; UNIQUE `(budget_event_id, category)`. Anon SELECT via EXISTS subquery on parent's `is_superseded=false`; authenticated SELECT all; service role writes. Smoke-tested with Albany CSD FY24 row. Applied 2026-05-15.
+- [x] **7.3 — Coverage tiers per state** (migration 0010 part 3). `state_extractor_metadata(state_postal PK, coverage_tier CHECK IN ('rich','moderate','thin','deferred'), tier_rationale, updated_at)`. Seeded with 51 jurisdictions: 8 rich, 26 moderate, 11 thin, 6 deferred. Applied 2026-05-15.
+    - **rich** (8): TX, MI, IL, PA, KY, WI, KS, NY.
+    - **moderate** (26): OH, CO, IA, AR, OK, OR, WA, NJ, IN, MA, VA, GA, MO, MN, NE, TN, AZ, MS, ID, SD, ND, MT, UT, LA, FL, CA.
+    - **thin** (11): AL, VT, NH, HI, ME, MD, SC, NC, DC, CT, WV.
+    - **deferred** (6): NV, NM, AK, RI, DE, WY.
 - [ ] **7.4 — Extractor extensions, rich-tier states first.** Each module's `parse_*` function adds a `components: list[ComponentInput]` field alongside the existing topline emission. Idempotent per `(budget_event_id, category)`. Order: TX → MI → NY → IL → PA → KY → WI → KS.
 - [ ] **7.5 — Universal floor pass.** For moderate-tier states whose source includes debt service + capital outlay as separable lines, emit those two categories at minimum. Goal: every district with a `budget_events` row also has ≥2 `budget_event_components` rows (or an explicit `no_breakdown_available=true` marker).
 - [ ] **7.6 — `v_per_pupil_metrics` view.** Joins `budget_events`, `districts`, `budget_event_components` to expose `topline_per_pupil`, plus per-category per-pupil columns. Used by §9 rankings and §10 API.
