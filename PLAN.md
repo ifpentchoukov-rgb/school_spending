@@ -1225,12 +1225,20 @@ Critical files in `/Users/ivanpentchoukov/Projects/school_spending_web/`. Reuse 
     - `cohorts/{cohort_id}` — deferred until cohort taxonomy is defined (currently the closest analog is `/rankings?state=&band=&metric=`).
 
     All responses share `{ data: [...], _meta: { page, page_size, total, has_next, coverage_caveats } }`. Errors return `{ error: { code, message } }`. Universal caveats (NYC-DOE-not-in-NY, NC-state-funded-only, charter coverage gap, 97.6% national enrollment) come from `lib/api/response.ts::UNIVERSAL_CAVEATS`; endpoint-specific caveats append on top.
-- [~] **10.2 — API auth + rate limits** (partial, web commit `1e0efd8`). `lib/api/tier.ts` reads `Authorization: Bearer <supabase_jwt>`, calls `auth.getUser`, and resolves the tier:
-    - **anonymous** (no/invalid token) — 60 rpm target, 500 max page size.
-    - **researcher** (email in `researcher_allowlist`, not revoked) — 600 rpm target, 5000 max page size.
-    - **admin** (`app_metadata.role = 'admin'` via custom_access_token_hook) — unlimited.
+- [x] **10.2 — API auth + rate limits** (migration `0015_api_keys.sql` + web commit `5fe767d`, 2026-05-15). Hard enforcement is live; `lib/api/rate-limit.ts` runs a fixed-window Vercel KV counter (60-second buckets) at the top of every public API/CSV route. Three tiers:
+    - **anonymous** — 60 rpm, 500 max page size. Identifier = first hop from `x-forwarded-for` / `x-real-ip`.
+    - **researcher** — 600 rpm, 5000 max page size. Identifier = `user:{uuid}` or `key:{uuid}`. Granted by adding an email to `researcher_allowlist`.
+    - **admin** — unlimited (`rpm: 0`). Identifier same as researcher.
 
-    Every response carries `X-RateLimit-Tier`, `X-RateLimit-RPM-Limit`, `X-RateLimit-MaxPageSize` headers; page-size caps are enforced today. **Hard rate-limit enforcement deferred** until Vercel KV / Upstash Redis is wired up (per-IP for anonymous, per-token for researcher). `/admin/api-keys` page for issuing/revoking long-lived researcher JWTs also deferred — for v1, researchers authenticate with their existing Supabase session token.
+    `detectTier()` accepts both bearer-token shapes: short-lived Supabase JWTs and long-lived opaque `ssk_…` keys (the latter from `public.api_keys`, sha256-hashed, indexed by 12-char prefix). Tier is inherited from the issuee's `researcher_allowlist` + role at request time, so revoking an allowlist entry transparently downgrades every key for that user.
+
+    `/admin/api-keys` page issues + revokes keys; the secret is shown once at creation. RLS gates the table behind a new `is_admin()` Postgres function. The page is linked from the admin dashboard quick-actions.
+
+    13 routes wired (5 v1 JSON + 4 v1 CSV + 3 Phase-9 page-driven CSVs); the `/api/v1` manifest itself stays unlimited so clients can always discover the rate-limit rules. 429 responses carry `Retry-After`, `X-RateLimit-Tier`, `X-RateLimit-RPM-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`.
+
+    Smoke-tested: 70 anonymous requests without KV configured → all 200 (pass-through behavior documented in `rate-limit.ts`); `/admin/api-keys` honors the admin-gate redirect; manifest renders the new auth shape.
+
+    **Operator one-time setup remaining:** (a) Vercel dashboard → Storage → create KV database, link to project (auto-injects `KV_URL`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`). (b) Add `SUPABASE_SERVICE_ROLE_KEY` to Vercel env vars. (c) Local dev: copy those four to `.env.local`. Once steps (a)/(b) are done, enforcement goes live on next deploy with no code changes.
 - [x] **10.3 — Bulk export endpoints** (web commit `1e0efd8`). Three CSV routes returning `text/csv` with `Content-Disposition: attachment` and a 1-hour edge cache:
     - `GET /api/v1/exports/budget-events.csv?fiscal_year=YYYY&state=&status=` — 50k-row hard cap.
     - `GET /api/v1/exports/budget-event-components.csv?fiscal_year=YYYY&state=&category=` — 100k-row hard cap, paginated through PostgREST range internally to bypass the default 1000-row select limit.
