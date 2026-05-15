@@ -48,11 +48,13 @@ from supabase import Client
 
 from extractors._base import (
     BudgetEventInput,
+    ComponentInput,
     Run,
     fetch_all,
     sha256_bytes,
     upload_source_document,
     upsert_budget_event_with_supersession,
+    upsert_components,
     upsert_source_document_row,
 )
 
@@ -85,6 +87,91 @@ def download(url: str) -> bytes:
     req = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(req, timeout=120) as resp:
         return resp.read()
+
+
+# Phase 7.5 — VA Exhibit C6 column mapping. Exhibit C6 has rich
+# functional breakdown of the Education topline (col 22 of Exhibit C):
+# 5 expenditure categories + 3 revenue categories = 8 canonical
+# categories per locality.
+VA_C6_COLS: dict[str, tuple[list[int], str]] = {
+    "instruction": ([3], "APA Exhibit C6 'Instruction' column"),
+    "administration": (
+        [7],
+        "APA Exhibit C6 'Administration, Attendance and Health' column "
+        "(includes health services; VA bundles these together)",
+    ),
+    "transportation": ([11], "APA Exhibit C6 'Pupil Transportation Services' column"),
+    "operations_maintenance": ([15], "APA Exhibit C6 'Operation and Maintenance Services' column"),
+    "food_service": (
+        [19],
+        "APA Exhibit C6 'School Food Services and Other Non-Instructional Operations' column",
+    ),
+    "revenue_state": ([28], "APA Exhibit C6 'Commonwealth Categorical Aid' column"),
+    "revenue_federal": (
+        [30, 32],
+        "APA Exhibit C6 'Federal Pass-Through' + 'Direct Federal Aid' columns",
+    ),
+    "revenue_local": ([34], "APA Exhibit C6 'Local Charges for Service' column"),
+}
+
+
+def parse_c6(xlsx_bytes: bytes) -> dict[tuple[str, str], dict[str, float]]:
+    """Parse Exhibit C6 — per-(section, locality) component amounts.
+
+    Same section-tracking logic as Exhibit C; Exhibit C6 has the locality
+    name in col 2 and category amounts in cols 3, 7, 11, 15, 19, 28, 30,
+    32, 34. Two header rows precede the data; section headers say
+    'Locality City of:' / 'County of:' / 'Town of:'.
+    """
+    wb = openpyxl.load_workbook(BytesIO(xlsx_bytes), read_only=True, data_only=True)
+    if "Exhibit C6" not in wb.sheetnames:
+        return {}
+    ws = wb["Exhibit C6"]
+    out: dict[tuple[str, str], dict[str, float]] = {}
+    section: str | None = None
+    seen_grand_total = False
+    for r in ws.iter_rows(values_only=True):
+        if not r:
+            continue
+        c2 = r[2] if len(r) > 2 else None
+        if not c2:
+            continue
+        cell = str(c2)
+        if "Locality" in cell:
+            if "City of" in cell:
+                section = "city"
+            elif "County of" in cell:
+                section = "county"
+            elif "Town of" in cell:
+                section = "town"
+            continue
+        if cell in ("Total", "Grand Total"):
+            if cell == "Grand Total":
+                seen_grand_total = True
+            continue
+        if seen_grand_total:
+            break
+        if not isinstance(r[0], (int, float)):
+            continue
+        if section is None:
+            continue
+        name = re.sub(r"[*#††]+$", "", cell.strip()).strip()
+        components: dict[str, float] = {}
+        for category, (col_idxs, _def) in VA_C6_COLS.items():
+            v_sum = 0.0
+            for ci in col_idxs:
+                v = r[ci] if ci < len(r) else None
+                if v is None:
+                    continue
+                try:
+                    v_sum += float(v)
+                except (TypeError, ValueError):
+                    pass
+            if v_sum > 0:
+                components[category] = v_sum
+        if components:
+            out[(section, name.upper())] = components
+    return out
 
 
 def parse_education_expenditures(xlsx_bytes: bytes) -> list[dict]:
@@ -232,7 +319,14 @@ def extract(*, fiscal_year: int = 2025, triggered_by: str = "manual") -> dict:
         rows_data = parse_education_expenditures(xlsx_bytes)
         print(f"  APA Exhibit C localities (with Education > 0): {len(rows_data):,}")
 
+        # Phase 7.5 — parse Exhibit C6 component breakdown
+        c6_components = parse_c6(xlsx_bytes)
+        print(f"  APA Exhibit C6 localities: {len(c6_components):,}")
+
         no_match: list[str] = []
+        n_components_inserted = 0
+        n_components_updated = 0
+        n_components_unchanged = 0
         for row in rows_data:
             key = (row["section"], row["name"].upper())
             district = crosswalk.get(key)
@@ -249,16 +343,46 @@ def extract(*, fiscal_year: int = 2025, triggered_by: str = "manual") -> dict:
                 source_document_id=src_id,
                 extraction_run_id=run.run_id,
             )
-            _, changed = upsert_budget_event_with_supersession(
+            event_id, changed = upsert_budget_event_with_supersession(
                 client=client, event=event
             )
             run.records_extracted += 1
             if changed:
                 run.records_changed += 1
 
+            # Phase 7.5 — emit components from Exhibit C6
+            comp_amts = c6_components.get(key, {})
+            components: list[ComponentInput] = []
+            for category, amount in comp_amts.items():
+                col_idxs, definition = VA_C6_COLS[category]
+                components.append(
+                    ComponentInput(
+                        category=category,
+                        amount=float(amount),
+                        definition=definition,
+                        line_or_cell_reference=(
+                            f"Sheet 'Exhibit C6'; cols {col_idxs} on row for "
+                            f"{row['section']}/{row['name']}"
+                        ),
+                    )
+                )
+            if components:
+                ins, upd, unch = upsert_components(
+                    client=client,
+                    budget_event_id=event_id,
+                    components=components,
+                )
+                n_components_inserted += ins
+                n_components_updated += upd
+                n_components_unchanged += unch
+
         print(
             f"  inserted/changed={run.records_changed}/{run.records_extracted}; "
             f"unmatched localities: {len(no_match)}"
+        )
+        print(
+            f"  components: inserted={n_components_inserted} "
+            f"updated={n_components_updated} unchanged={n_components_unchanged}"
         )
         if no_match[:10]:
             print(f"  sample unmatched: {no_match[:10]}")

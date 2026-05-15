@@ -1149,7 +1149,14 @@ NY was the biggest deferred state at 2.36M enrollment and the prior deferral not
     - **IL: demoted to moderate** — OEPP-PCTC file is topline-only; no function/object breakdown. IL state_extractor_metadata.coverage_tier updated. ISBE AFR (IWAS-gated) would unlock rich tier; queued.
     
     **Total: 35,960 component rows across 3,621 budget events.** All extractors idempotent.
-- [ ] **7.5 — Universal floor pass.** For moderate-tier states whose source includes debt service + capital outlay as separable lines, emit those two categories at minimum. Goal: every district with a `budget_events` row also has ≥2 `budget_event_components` rows (or an explicit `no_breakdown_available=true` marker).
+- [~] **7.5 — Universal floor pass (in progress 2026-05-15).** Started with high-enrollment moderate-tier states; 5 of 26 done. 3 promoted to rich tier along the way.
+    - **GA → rich**: 184 districts × 9 categories = **1,345** components (GOSA Rev/Exp 11 DESCRIPTION values → canonical mapping)
+    - **OH → rich**: 606 × 8 = **4,847** (Cupp Report per-pupil cols × ADM)
+    - **VA → rich**: 101 × 8 = **808** (APA Exhibit C6 — 5 exp + 3 revenue)
+    - **NJ (mod)**: 231 × 3 = **684** (TGES per-pupil × enrollment: capital, food, debt only — TGES doesn't break out instruction/admin)
+    - **IN (mod)**: 290 × ~2 = **542** (SCFI Fund Classification: Debt Funds + Capital Funds + Capital/Safety Referendum)
+    - Total so far: **8,226** components from 1,412 events.
+    - **Remaining moderate-tier (21):** WA (rich potential — F-196 has EXP by Activity/Object/Program sheets), CA (SACS MDB has full Object×Function), CO, IA, AR, OK, OR, MA, MO, MN, NE, TN, AZ, MS, ID, SD, ND, MT, UT, LA, FL. Each ~30-90 min depending on source format.
 - [ ] **7.6 — `v_per_pupil_metrics` view.** Joins `budget_events`, `districts`, `budget_event_components` to expose `topline_per_pupil`, plus per-category per-pupil columns. Used by §9 rankings and §10 API.
 
 **Acceptance:** rich-tier states emit ≥8 components per non-superseded event; moderate-tier emit ≥2; thin-tier flagged. `v_per_pupil_metrics` returns a row for every non-superseded budget_event with a positive enrollment_fy25.

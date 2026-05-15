@@ -49,11 +49,13 @@ from supabase import Client
 
 from extractors._base import (
     BudgetEventInput,
+    ComponentInput,
     Run,
     fetch_all,
     sha256_bytes,
     upload_source_document,
     upsert_budget_event_with_supersession,
+    upsert_components,
     upsert_source_document_row,
 )
 
@@ -89,6 +91,23 @@ OPERATING_CLASSES = {
     "Rainy Day Fund",
 }
 
+# Phase 7.5 — universal floor mapping for IN. Fund Classification values
+# from the SCFI sheet that map to canonical categories. The topline
+# excludes these (debt + capital); we surface them as components.
+IN_COMPONENT_FUND_CLASSES: dict[str, tuple[set[str], str]] = {
+    "debt_service": (
+        {"Debt Funds"},
+        "DUAB SCFI Annual Deficit Surplus — sum Expenditure where "
+        "Fund Classification='Debt Funds' (principal + interest on bonds)",
+    ),
+    "capital_outlay": (
+        {"Capital Funds", "Capital Referendum Fund", "School Safety Referendum Fund"},
+        "DUAB SCFI Annual Deficit Surplus — sum Expenditure where "
+        "Fund Classification in {Capital Funds, Capital Referendum Fund, "
+        "School Safety Referendum Fund}",
+    ),
+}
+
 KNOWN_FILE_URLS: dict[int, str] = {
     # 2025-release covers CY 2014-2024; URL pinned to current release.
     # Update this map when DUAB publishes a 2026-release with CY 2025.
@@ -115,8 +134,10 @@ def download(url: str) -> bytes:
 
 
 def parse_deficit_surplus(xlsx_bytes: bytes, cal_year: int) -> list[dict]:
-    """Return [{code, total_op_exp}] from the Annual Deficit Surplus sheet
-    for the given calendar year, using OPERATING_CLASSES filter."""
+    """Return [{code, total_op_exp, components}] from the Annual Deficit
+    Surplus sheet. Topline = sum Expenditure across OPERATING_CLASSES;
+    components = per-category sums from IN_COMPONENT_FUND_CLASSES (debt,
+    capital) which are excluded from topline."""
     wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes), data_only=True)
     ws = wb["Annual Deficit Surplus"]
     rows = ws.iter_rows(values_only=True)
@@ -131,13 +152,19 @@ def parse_deficit_surplus(xlsx_bytes: bytes, cal_year: int) -> list[dict]:
             f"Unexpected SCFI Annual Deficit Surplus header: {header[:9]}"
         )
     totals: dict[str, float] = {}
+    # Map: corp_id -> {category: amount}
+    components: dict[str, dict[str, float]] = {}
+    # Reverse-index fund class -> category
+    fund_to_category: dict[str, str] = {}
+    for category, (fund_classes, _def) in IN_COMPONENT_FUND_CLASSES.items():
+        for fc in fund_classes:
+            fund_to_category[fc] = category
     for r in rows:
         if not r or r[0] is None:
             continue
         if r[2] != cal_year:
             continue
-        if r[5] not in OPERATING_CLASSES:
-            continue
+        fund_class = r[5]
         exp = r[8]
         if exp is None:
             continue
@@ -145,9 +172,20 @@ def parse_deficit_surplus(xlsx_bytes: bytes, cal_year: int) -> list[dict]:
             amt = float(exp)
         except (TypeError, ValueError):
             continue
-        totals[str(r[0]).strip()] = totals.get(str(r[0]).strip(), 0.0) + amt
+        code = str(r[0]).strip()
+        if fund_class in OPERATING_CLASSES:
+            totals[code] = totals.get(code, 0.0) + amt
+        elif fund_class in fund_to_category:
+            cat = fund_to_category[fund_class]
+            components.setdefault(code, {})[cat] = (
+                components.get(code, {}).get(cat, 0.0) + amt
+            )
     return [
-        {"code": code, "total_op_exp": amt}
+        {
+            "code": code,
+            "total_op_exp": amt,
+            "components": components.get(code, {}),
+        }
         for code, amt in totals.items()
         if amt > 0
     ]
@@ -229,6 +267,9 @@ def extract(*, fiscal_year: int = 2024, triggered_by: str = "manual") -> dict:
         print(f"  SCFI corps with operating exp for CY{fiscal_year}: {len(district_data):,}")
 
         no_match: list[str] = []
+        n_components_inserted = 0
+        n_components_updated = 0
+        n_components_unchanged = 0
         for d in district_data:
             district = crosswalk.get(d["code"])
             if district is None:
@@ -244,16 +285,48 @@ def extract(*, fiscal_year: int = 2024, triggered_by: str = "manual") -> dict:
                 source_document_id=src_id,
                 extraction_run_id=run.run_id,
             )
-            _, changed = upsert_budget_event_with_supersession(
+            event_id, changed = upsert_budget_event_with_supersession(
                 client=client, event=event
             )
             run.records_extracted += 1
             if changed:
                 run.records_changed += 1
 
+            # Phase 7.5 — universal floor: debt + capital from Fund Classification
+            components: list[ComponentInput] = []
+            for category, amount in d.get("components", {}).items():
+                if amount <= 0:
+                    continue
+                fund_classes, definition = IN_COMPONENT_FUND_CLASSES[category]
+                components.append(
+                    ComponentInput(
+                        category=category,
+                        amount=float(amount),
+                        definition=definition,
+                        line_or_cell_reference=(
+                            f"Sheet 'Annual Deficit Surplus'; sum Expenditure "
+                            f"where Corp ID={d['code']} AND Cal Year={fiscal_year} "
+                            f"AND Fund Classification in {sorted(fund_classes)}"
+                        ),
+                    )
+                )
+            if components:
+                ins, upd, unch = upsert_components(
+                    client=client,
+                    budget_event_id=event_id,
+                    components=components,
+                )
+                n_components_inserted += ins
+                n_components_updated += upd
+                n_components_unchanged += unch
+
         print(
             f"  inserted/changed={run.records_changed}/{run.records_extracted}; "
             f"unmatched SCFI corp IDs: {len(no_match)}"
+        )
+        print(
+            f"  components: inserted={n_components_inserted} "
+            f"updated={n_components_updated} unchanged={n_components_unchanged}"
         )
 
     return {
