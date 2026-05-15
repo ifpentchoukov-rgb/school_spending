@@ -1178,7 +1178,10 @@ NY was the biggest deferred state at 2.36M enrollment and the prior deferral not
     **Total Phase 7.5: 29,640 components across ~4,700 events. Cumulative Phase 7.4+7.5: 65,600 component rows.**
     
     **Skipped (no per-district breakdown in source):** WA (F-196 detail sheets are state-level aggregates), FL (Section II PDF only — capital/debt in separate sections would require more PDF parsing), MA (DESE PPX HTML totals only), TN (ASR Table 51 totals only), ND (FinFacts PDF Section H ADM×Avg Cost only), MO (DESE MCDS XLS has TOTAL EXPENDITURE but no expenditure-side sub-categories).
-- [ ] **7.6 — `v_per_pupil_metrics` view.** Joins `budget_events`, `districts`, `budget_event_components` to expose `topline_per_pupil`, plus per-category per-pupil columns. Used by §9 rankings and §10 API.
+- [x] **7.6 — `v_per_pupil_metrics` view** (migration 0011). Wide-format view over non-superseded `budget_events` joined to `districts` (enrollment + naming) and `budget_event_components` (one LEFT JOIN per canonical category). 14 `{category}_amount` + 14 `{category}_per_pupil` columns plus `topline_per_pupil`. Divisor: `districts.enrollment_fy25` (NULLIF-guarded). Applied 2026-05-15.
+    - Verified: 13,312 non-superseded rows; 13,279 with positive per-pupil; representative TX FY25 rankings: Pharr-San Juan-Alamo ($16,327 PP), Austin ISD ($14,683 / $6,522 debt PP).
+    - Categories the source doesn't separate are correctly NULL via LEFT JOIN — e.g. TX has 12 categories but not employee_benefits (PEIMS rolls Object 6200 into Object 6100); KS/KY/MN/WI similar. Coverage gaps are source-side, not view-side.
+    - Powers Phase 9.2 rankings, 9.3 compare, 9.4 per-LEA category table, Phase 10.1 API endpoints.
 
 **Acceptance:** rich-tier states emit ≥8 components per non-superseded event; moderate-tier emit ≥2; thin-tier flagged. `v_per_pupil_metrics` returns a row for every non-superseded budget_event with a positive enrollment_fy25.
 
