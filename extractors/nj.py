@@ -41,11 +41,13 @@ from supabase import Client
 
 from extractors._base import (
     BudgetEventInput,
+    ComponentInput,
     Run,
     fetch_all,
     sha256_bytes,
     upload_source_document,
     upsert_budget_event_with_supersession,
+    upsert_components,
     upsert_source_document_row,
 )
 
@@ -92,8 +94,27 @@ def download(url: str) -> bytes:
         return resp.read()
 
 
+# Phase 7.5 — NJ TGES Detail columns. Most cols are per-pupil; we
+# multiply by daily enrollment to recover total dollars. Maps to 3
+# canonical categories (universal floor: debt + capital + food).
+# instruction/admin/etc. are folded into 'General Current Expense Per
+# Pupil' which combines instruction + support + admin into one bucket
+# (NJDOE doesn't separate further at TGES granularity). To break out
+# instruction etc. we'd need to read the underlying CAFRs — out of scope
+# for Phase 7.5.
+NJ_PERPUPIL_COL_HEADERS: dict[str, list[str]] = {
+    # category -> list of TGES column header(s) to sum (per-pupil $).
+    "capital_outlay": ["Total Capital Outlay Per Pupil"],
+    "food_service": ["Total Food Services \nPer Pupil"],
+    "debt_service": [
+        "Debt Service on Locally Issued Bonds Per Pupil",
+        "Debt Service On School Development Authority Bonds Per Pupil",
+    ],
+}
+
+
 def parse_tges_detail(xlsx_bytes: bytes) -> list[dict]:
-    """Return [{county, name, code, total_spending}] from the Detail sheet."""
+    """Return [{county, name, code, total_spending, enrollment, perpupil_components}]."""
     wb = openpyxl.load_workbook(BytesIO(xlsx_bytes), read_only=True, data_only=True)
     ws = wb[wb.sheetnames[0]]
     rows = list(ws.iter_rows(values_only=True))
@@ -119,6 +140,23 @@ def parse_tges_detail(xlsx_bytes: bytes) -> list[dict]:
             break
     if total_col is None:
         raise RuntimeError(f"'Total Spending' column not found; header={header}")
+    # Find enrollment column (for per-pupil → total reconstruction).
+    enroll_col = None
+    for i, h in enumerate(header):
+        if h and "Enrollment" in str(h):
+            enroll_col = i
+            break
+    # Map per-pupil headers → column indices for component reconstruction.
+    perpupil_cols: dict[str, list[int]] = {}
+    for category, possible_headers in NJ_PERPUPIL_COL_HEADERS.items():
+        col_idxs: list[int] = []
+        for h_pattern in possible_headers:
+            for i, h in enumerate(header):
+                if h and str(h).strip() == h_pattern.strip():
+                    col_idxs.append(i)
+                    break
+        if col_idxs:
+            perpupil_cols[category] = col_idxs
 
     out: list[dict] = []
     for r in rows[header_idx + 1:]:
@@ -128,6 +166,26 @@ def parse_tges_detail(xlsx_bytes: bytes) -> list[dict]:
             total = float(r[total_col]) if r[total_col] is not None else None
         except (TypeError, ValueError):
             continue
+        enrollment = None
+        if enroll_col is not None:
+            try:
+                enrollment = float(r[enroll_col]) if r[enroll_col] is not None else None
+            except (TypeError, ValueError):
+                pass
+        # Build per-pupil component map: {category: per_pupil_sum}
+        pp_components: dict[str, float] = {}
+        for category, col_idxs in perpupil_cols.items():
+            v_sum = 0.0
+            for ci in col_idxs:
+                v = r[ci] if ci < len(r) else None
+                if v is None:
+                    continue
+                try:
+                    v_sum += float(v)
+                except (TypeError, ValueError):
+                    pass
+            if v_sum > 0:
+                pp_components[category] = v_sum
         if not total or total <= 0:
             continue
         try:
@@ -139,6 +197,8 @@ def parse_tges_detail(xlsx_bytes: bytes) -> list[dict]:
             "name": str(r[name_col]).strip() if r[name_col] else None,
             "code": code,
             "total_spending": total,
+            "enrollment": enrollment,
+            "perpupil_components": pp_components,
         })
     return out
 
@@ -215,6 +275,9 @@ def extract(*, fiscal_year: int = 2024, triggered_by: str = "manual") -> dict:
 
         no_match: list[str] = []
         unknown_county: set[str] = set()
+        n_components_inserted = 0
+        n_components_updated = 0
+        n_components_unchanged = 0
         for row in tges_rows:
             cc = NJ_COUNTY_CODES.get(row["county"])
             if not cc:
@@ -236,16 +299,51 @@ def extract(*, fiscal_year: int = 2024, triggered_by: str = "manual") -> dict:
                 source_document_id=src_id,
                 extraction_run_id=run.run_id,
             )
-            _, changed = upsert_budget_event_with_supersession(
+            event_id, changed = upsert_budget_event_with_supersession(
                 client=client, event=event
             )
             run.records_extracted += 1
             if changed:
                 run.records_changed += 1
 
+            # Phase 7.5 — emit components from per-pupil × enrollment.
+            enrollment = row.get("enrollment")
+            if enrollment and enrollment > 0:
+                components: list[ComponentInput] = []
+                for category, per_pupil in row.get("perpupil_components", {}).items():
+                    src_headers = NJ_PERPUPIL_COL_HEADERS[category]
+                    components.append(
+                        ComponentInput(
+                            category=category,
+                            amount=float(per_pupil) * float(enrollment),
+                            definition=(
+                                f"NJDOE TGES Detail sheet: sum of per-pupil column(s) "
+                                f"{src_headers}, multiplied by 'Daily Enrollment Plus "
+                                f"Sent Pupils' to reconstruct total dollars"
+                            ),
+                            line_or_cell_reference=(
+                                f"Row for {row['county']}/{row['code']:04d} "
+                                f"({row['name']}); columns {src_headers}"
+                            ),
+                        )
+                    )
+                if components:
+                    ins, upd, unch = upsert_components(
+                        client=client,
+                        budget_event_id=event_id,
+                        components=components,
+                    )
+                    n_components_inserted += ins
+                    n_components_updated += upd
+                    n_components_unchanged += unch
+
         print(
             f"  inserted/changed={run.records_changed}/{run.records_extracted}; "
             f"unmatched: {len(no_match)} (incl. {len(unknown_county)} unknown counties: {sorted(unknown_county)})"
+        )
+        print(
+            f"  components: inserted={n_components_inserted} "
+            f"updated={n_components_updated} unchanged={n_components_unchanged}"
         )
 
     return {

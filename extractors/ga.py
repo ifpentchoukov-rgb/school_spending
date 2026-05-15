@@ -51,11 +51,13 @@ from supabase import Client
 
 from extractors._base import (
     BudgetEventInput,
+    ComponentInput,
     Run,
     fetch_all,
     sha256_bytes,
     upload_source_document,
     upsert_budget_event_with_supersession,
+    upsert_components,
     upsert_source_document_row,
 )
 
@@ -116,12 +118,37 @@ def download(url: str) -> bytes:
         return resp.read()
 
 
+# Phase 7.4 / 7.5 — canonical category mapping for GA. Each GOSA
+# DESCRIPTION value maps to one canonical category; some categories
+# combine multiple descriptions (e.g. administration = General Admin +
+# School Admin). 9 canonical categories from 11 GOSA descriptions.
+GA_DESCRIPTION_MAPPING: dict[str, str] = {
+    "Instruction": "instruction",
+    "Pupil Services": "support_services_student",
+    "Instructional Support": "support_services_instruction",
+    "Media": "support_services_instruction",  # combine with Instructional Support
+    "General Administration": "administration",
+    "School Administration": "administration",  # combine
+    "Maintenance and Operations": "operations_maintenance",
+    "Transportation": "transportation",
+    "School food Services": "food_service",
+    "Renovation and Capital Projects": "capital_outlay",
+    "Debt Services": "debt_service",
+}
+
+
 def parse_district_toplines(csv_bytes: bytes) -> dict[str, dict]:
-    """{district_code: {name, total_exp}} aggregating all 11 expenditure rows."""
+    """{district_code: {name, total_exp, components}} aggregating all
+    11 expenditure rows. components is {category: amount}."""
     text = csv_bytes.decode("utf-8", errors="replace")
     reader = csv.DictReader(io.StringIO(text))
     by_district: dict[str, dict] = defaultdict(
-        lambda: {"name": None, "total_exp": 0.0, "row_count": 0}
+        lambda: {
+            "name": None,
+            "total_exp": 0.0,
+            "row_count": 0,
+            "components": defaultdict(float),
+        }
     )
     for r in reader:
         if r.get("DETAIL_LVL_DESC") != "District":
@@ -139,8 +166,16 @@ def parse_district_toplines(csv_bytes: bytes) -> dict[str, dict]:
         d["name"] = r.get("SCHOOL_DSTRCT_NM")
         d["total_exp"] += value
         d["row_count"] += 1
+        # Phase 7.4 — bucket into canonical category
+        desc = r.get("DESCRIPTION") or ""
+        category = GA_DESCRIPTION_MAPPING.get(desc)
+        if category and value > 0:
+            d["components"][category] += value
     # Drop any district with fewer than the expected 11 expenditure categories
     # (would indicate partial data). Keep but warn upstream.
+    # Convert defaultdict components → plain dict for downstream serialization.
+    for d in by_district.values():
+        d["components"] = dict(d["components"])
     return dict(by_district)
 
 
@@ -223,6 +258,9 @@ def extract(*, fiscal_year: int = 2025, triggered_by: str = "manual") -> dict:
 
         no_match: list[str] = []
         partial_data: list[str] = []
+        n_components_inserted = 0
+        n_components_updated = 0
+        n_components_unchanged = 0
         for code, d in sorted(toplines.items()):
             district = crosswalk.get(code)
             if district is None:
@@ -240,23 +278,63 @@ def extract(*, fiscal_year: int = 2025, triggered_by: str = "manual") -> dict:
                 source_document_id=src_id,
                 extraction_run_id=run.run_id,
             )
-            _, changed = upsert_budget_event_with_supersession(
+            event_id, changed = upsert_budget_event_with_supersession(
                 client=client, event=event
             )
             run.records_extracted += 1
             if changed:
                 run.records_changed += 1
 
+            # Phase 7.4 / 7.5 — emit canonical category components.
+            components: list[ComponentInput] = []
+            for category, amount in d.get("components", {}).items():
+                if amount <= 0:
+                    continue
+                descs = [
+                    desc
+                    for desc, cat in GA_DESCRIPTION_MAPPING.items()
+                    if cat == category
+                ]
+                components.append(
+                    ComponentInput(
+                        category=category,
+                        amount=float(amount),
+                        definition=(
+                            f"GOSA Revenues_and_Expenditures CSV; sum of "
+                            f"REV_EXP_VALUE at DETAIL_LVL_DESC='District' where "
+                            f"DESCRIPTION in {descs}"
+                        ),
+                        line_or_cell_reference=(
+                            f"CSV rows where SCHOOL_DSTRCT_CD={code} AND "
+                            f"DESCRIPTION in {descs}"
+                        ),
+                    )
+                )
+            if components:
+                ins, upd, unch = upsert_components(
+                    client=client,
+                    budget_event_id=event_id,
+                    components=components,
+                )
+                n_components_inserted += ins
+                n_components_updated += upd
+                n_components_unchanged += unch
+
         print(
             f"  inserted/changed={run.records_changed}/{run.records_extracted}; "
             f"unmatched GOSA codes: {len(no_match)}; "
             f"districts with partial categories: {len(partial_data)}"
+        )
+        print(
+            f"  components: inserted={n_components_inserted} "
+            f"updated={n_components_updated} unchanged={n_components_unchanged}"
         )
 
     return {
         "fiscal_year": fiscal_year,
         "records_extracted": run.records_extracted,
         "records_changed": run.records_changed,
+        "components_inserted": n_components_inserted,
         "no_match_count": len(no_match),
     }
 

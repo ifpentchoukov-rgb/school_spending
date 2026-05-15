@@ -46,11 +46,13 @@ from supabase import Client
 
 from extractors._base import (
     BudgetEventInput,
+    ComponentInput,
     Run,
     fetch_all,
     sha256_bytes,
     upload_source_document,
     upsert_budget_event_with_supersession,
+    upsert_components,
     upsert_source_document_row,
 )
 
@@ -115,11 +117,24 @@ def download(url: str) -> bytes:
         return resp.read()
 
 
+# Phase 7.4 — Cupp Report per-pupil category columns. Each label
+# template uses FY-short suffix; multiplied by ADM to reconstruct total
+# dollars. 8 canonical categories: 5 expenditure + 3 revenue.
+OH_PERPUPIL_LABELS: dict[str, str] = {
+    # category -> Cupp column label template (with FY-short suffix appended)
+    "instruction": "Instructional Expenditure Per Pupil FY{fy}",
+    "support_services_student": "Pupil Support Expenditure Per Pupil FY{fy}",
+    "support_services_instruction": "Staff Support Expenditure Per Pupil FY{fy}",
+    "administration": "Administrator Expenditure Per Pupil FY{fy}",
+    "operations_maintenance": "Building Operation Expenditure Per Pupil FY{fy}",
+    "revenue_state": "State Revenue Per Pupil FY{fy}",
+    "revenue_local": "Local Revenue Per Pupil FY{fy}",
+    "revenue_federal": "Federal Revenue Per Pupil FY{fy}",
+}
+
+
 def parse_district_data(xlsx_bytes: bytes, fiscal_year: int) -> list[dict]:
-    """Return [{irn, name, adm, oepp, total_op_exp}, ...]. The header is
-    'Enrolled ADM FY{NN}' / 'Total Operating Expenditure Per Pupil FY{NN}';
-    column positions (4 and 46) have been stable across recent years but we
-    look up by header to be safe."""
+    """Return [{irn, name, adm, oepp, total_op_exp, perpupil_components}, ...]."""
     wb = openpyxl.load_workbook(BytesIO(xlsx_bytes), read_only=True, data_only=True)
     if "District Data" not in wb.sheetnames:
         raise RuntimeError(f"District Data sheet missing; sheets={wb.sheetnames}")
@@ -141,6 +156,13 @@ def parse_district_data(xlsx_bytes: bytes, fiscal_year: int) -> list[dict]:
     irn_col = header.index("IRN") if "IRN" in header else 1
     name_col = header.index("District") if "District" in header else 0
 
+    # Phase 7.4 — find per-pupil component columns
+    pp_cols: dict[str, int] = {}
+    for category, label_tpl in OH_PERPUPIL_LABELS.items():
+        label = label_tpl.format(fy=fy_short)
+        if label in header:
+            pp_cols[category] = header.index(label)
+
     out: list[dict] = []
     for r in rows[1:]:
         if not r or not r[irn_col]:
@@ -152,12 +174,25 @@ def parse_district_data(xlsx_bytes: bytes, fiscal_year: int) -> list[dict]:
             continue
         if not adm or not oepp:
             continue
+        # Phase 7.4 — per-pupil component values
+        pp_components: dict[str, float] = {}
+        for category, col_idx in pp_cols.items():
+            v = r[col_idx] if col_idx < len(r) else None
+            if v is None:
+                continue
+            try:
+                amt = float(v)
+            except (TypeError, ValueError):
+                continue
+            if amt > 0:
+                pp_components[category] = amt
         out.append({
             "irn": str(r[irn_col]),
             "name": r[name_col],
             "adm": adm,
             "oepp": oepp,
             "total_op_exp": adm * oepp,
+            "perpupil_components": pp_components,
         })
     return out
 
@@ -237,6 +272,10 @@ def extract(*, fiscal_year: int = 2025, triggered_by: str = "manual") -> dict:
         print(f"  Cupp District Data rows: {len(cupp_rows):,}")
 
         no_match: list[str] = []
+        n_components_inserted = 0
+        n_components_updated = 0
+        n_components_unchanged = 0
+        fy_short = str(fiscal_year)[2:]
         for row in cupp_rows:
             district = crosswalk.get(row["irn"])
             if district is None:
@@ -248,20 +287,52 @@ def extract(*, fiscal_year: int = 2025, triggered_by: str = "manual") -> dict:
                 fiscal_year=fiscal_year,
                 status="actual",
                 topline_amount=row["total_op_exp"],
-                topline_definition=TOPLINE_DEFINITION.replace("{NN}", str(fiscal_year)[2:]),
+                topline_definition=TOPLINE_DEFINITION.replace("{NN}", fy_short),
                 source_document_id=src_id,
                 extraction_run_id=run.run_id,
             )
-            _, changed = upsert_budget_event_with_supersession(
+            event_id, changed = upsert_budget_event_with_supersession(
                 client=client, event=event
             )
             run.records_extracted += 1
             if changed:
                 run.records_changed += 1
 
+            # Phase 7.4 — emit per-pupil × ADM components.
+            adm = row["adm"]
+            components: list[ComponentInput] = []
+            for category, per_pupil in row.get("perpupil_components", {}).items():
+                label = OH_PERPUPIL_LABELS[category].format(fy=fy_short)
+                components.append(
+                    ComponentInput(
+                        category=category,
+                        amount=float(per_pupil) * float(adm),
+                        definition=(
+                            f"ODE Cupp Report 'District Data' sheet, "
+                            f"column '{label}' × 'Enrolled ADM FY{fy_short}'"
+                        ),
+                        line_or_cell_reference=(
+                            f"Row for IRN={row['irn']}; column '{label}'"
+                        ),
+                    )
+                )
+            if components:
+                ins, upd, unch = upsert_components(
+                    client=client,
+                    budget_event_id=event_id,
+                    components=components,
+                )
+                n_components_inserted += ins
+                n_components_updated += upd
+                n_components_unchanged += unch
+
         print(
             f"  inserted/changed={run.records_changed}/{run.records_extracted}; "
             f"unmatched IRNs: {len(no_match)}"
+        )
+        print(
+            f"  components: inserted={n_components_inserted} "
+            f"updated={n_components_updated} unchanged={n_components_unchanged}"
         )
 
     return {
