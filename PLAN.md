@@ -326,6 +326,24 @@ Aim for 10 states per session. The full table can take a week of part-time work.
 
 **Status (2026-05-05):** First two boxes met. CI run [25386201419](https://github.com/ifpentchoukov-rgb/school_spending/actions/runs/25386201419) succeeded — 28 active states identified for FY27, CA budget extractor ran (0 records since FY27 SACS submissions don't open until fall 2026; expected). Artifact downloaded and verified. **Cron will fire automatically each day at 06:00 UTC; the 3-consecutive-day clock starts now.** The auto-issue-on-failure step is queued as a follow-up.
 
+**Update (2026-05-14):** Auto-issue step landed and tested live. Created the missing `extractor-failure` label on the GitHub repo so the `gh issue create --label "bug,extractor-failure"` call no longer fails. Also added `extractors/_exceptions.py::SourceNotYetPublished` — a `RuntimeError` subclass that the `Run` context manager classifies as `status='partial'` instead of `'failed'`. NJ UFB FY27 (deadline May 15, lands May–June) and PA GFB FY27 (certifies ~Sept) were tripping the daily failure alarm every morning despite being correctly-implemented extractors waiting on the source side. Both now raise the new exception type when the URL/file isn't yet published, so the alarm only fires on genuine breakage. Other extractors that should adopt this pattern as they break in their pre-publication windows.
+
+### Phase B — Public + researcher portal (school_spending_web)
+
+Sister repo at [`ifpentchoukov-rgb/school_spending_web`](https://github.com/ifpentchoukov-rgb/school_spending_web) (currently private; user can flip public). Live at **https://school-spending-web.vercel.app**.
+
+- [x] Repo scaffolded: Next.js 16 App Router, Supabase SSR clients, Tailwind. Coverage dashboard, all-states index, per-state showcase, per-LEA detail, methodology, login (magic-link).
+- [x] Researcher tier (Phase B): admin pages for runs, extractor docs + manual trigger, verifier queue, allowlist manager. Middleware gates `/admin/*` on `app_metadata.role IN ('researcher','admin')`.
+- [x] Vercel deploy + GitHub Git integration (push-to-deploy + per-PR previews) — 2026-05-14.
+- [x] Supabase database webhooks → `/api/revalidate` (migration 0008). Three triggers (budget_events INSERT/UPDATE, extraction_runs UPDATE, extractor_triggers INSERT/UPDATE) call `supabase_functions.http_request()` with the shared webhook secret. Verified end-to-end: page refreshes within ~10s of an extractor commit.
+- [x] Extractor trigger button → GitHub `workflow_dispatch`. The `revalidate-triggers` webhook also dispatches the daily.yml workflow when a fresh `extractor_triggers` row appears (state postal resolved from `lib/extractor-docs.json`). `GITHUB_REPO_DISPATCH_TOKEN` env var in Vercel; fine-grained PAT scoped to `school_spending` with `Actions: Read and write`. Verified: insert → `workflow_dispatch` → `extraction_runs` row written within ~60s.
+- [x] Auth hook (`assign-researcher-role`) — Supabase Custom Access Token hook implemented as a Postgres function (migration 0009). On JWT mint, looks up the user's email in `researcher_allowlist` (active rows) and sets `app_metadata.role='researcher'`; revocations propagate on next refresh. `is_verifier()` tightened from "any authenticated user" to "JWT app_metadata.role IN ('researcher','admin')". **Hook function is created but not yet active** — must be enabled in Supabase Dashboard → Authentication → Hooks → Custom Access Token.
+
+**Open Phase B follow-ups:**
+- Custom domain (`schoolspending.app` referenced in code comments — domain isn't registered yet; needs registration + DNS).
+- Update `extractor_triggers.status` from `'queued'` → `'dispatched'` after successful workflow dispatch. Currently the trigger row stays at `'queued'` and the user infers status from `/admin/runs`. Updating it would need `SUPABASE_SERVICE_ROLE_KEY` in Vercel env (the table is RLS-gated).
+- Enable the Custom Access Token hook in the Supabase dashboard (one-click; can't do via SQL).
+
 ### Phase 5 — Verification workflow
 
 - [x] Create the work-queue view `unverified_events_high_priority` — top-200-by-enrollment districts × fiscal_year=2027 × verification_status='unverified' × not is_superseded, oldest first. `SECURITY INVOKER` so RLS evaluates against the calling user.

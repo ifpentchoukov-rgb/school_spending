@@ -1,10 +1,10 @@
 # School District Budget Tracker — State-by-State Status
 
-_Last updated: 2026-05-07_
+_Last updated: 2026-05-14_
 
 **Coverage:** 44 states (+ DC) live, 41.4M / 44.8M K-12 students = **92.4% of US enrollment**.
 
-**Every US state + DC has now been investigated.** 7 are deferred for various source-side blockers (interactive portals, captchas, JS-only dashboards, lagging publication).
+**Every US state + DC has now been investigated.** 6 are deferred for various source-side blockers (interactive portals, captchas, JS-only dashboards, lagging publication). NY is now reclassified as **buildable, queued** — the prior "no bulk feed" deferral was wrong; NYSED ST-3 publishes as a stable ZIP at `https://stateaid.nysed.gov/st3/st3data/{YYYY-YYYY}_School_Year_{YYYY-YYYY}_SAMS%20ST-3.zip` (FY24 = 13.89 MB). Same pattern as CA SACS.
 
 This file is the running snapshot of which states are live, which are deferred, and what's next. Update it whenever an extractor lands, a state is deferred, or a follow-up is closed.
 
@@ -57,11 +57,16 @@ This file is the running snapshot of which states are live, which are deferred, 
 | DC | 67k | actual | 2024 | 6/6 (100%) | TBD | OSSE Report Card Finance |
 | MT | 21k | actual | 2025 | 64/64 (100%) | TBD | OPI School Expenditures |
 
-## Deferred (7 states, ~4.1M enrollment)
+## Buildable, queued (1 state, 2.36M enrollment) — NEW 2026-05-14
+
+| State | Enroll | Source | Notes |
+|---|---:|---|---|
+| NY | 2.36M | NYSED ST-3 ZIP | `https://stateaid.nysed.gov/st3/st3data/{YYYY-YYYY}_School_Year_{YYYY-YYYY}_SAMS%20ST-3.zip` — Excel single-file XLSX also available. 2026-05-14 investigation confirmed bulk file exists at predictable URL; the prior deferral mis-identified the href as relative-to-domain-root when it's relative-to-/st3/. Topline definition + crosswalk TBD. Same pattern as CA SACS (.zip with .mdb / .xlsx). Closing this would push coverage 92.4% → 97.6%. |
+
+## Deferred (6 states, ~1.7M enrollment)
 
 | State | Enroll | Reason | Path forward |
 |---|---:|---|---|
-| NY | 2.36M | NYSED has no bulk financial feed | FOIA / Chrome-MCP |
 | NV | 483k | per-LEA PDFs unpredictable URLs | Chrome-MCP / FOIA |
 | NM | 295k | openbooks.ped.nm.gov + Looker SaaS embed (Sucuri WAF defeated by curl-cffi chrome124, but data lives in Looker dashboards requiring tile-by-tile CSV scraping) | Build Looker scraper (significant effort) |
 | AK | 129k | No per-district bulk expenditure file published | FOIA DEED |
@@ -102,7 +107,7 @@ Per the May 2026 systematic deadline-order investigation: NC, TN, ID, SD (Jul de
 
 ## Open follow-ups (existing extractors)
 
-- **NC LGC all-funds** — close state-funded-only gap (~40% of operating)
+- **NC LGC all-funds (scoped 2026-05-14, hard)** — LGC portal explicitly excludes school districts; NCDPI bulk file is SPSF (state-funded only — current source); each LEA's "Plain English Report" required by G.S. § 115C-105.25(c) is all-funds but lives on the district's own website. Realistic paths: (a) per-LEA scrape of ~196 district websites with bespoke layouts, (b) FOIA/email to NCDPI Financial and Business Services for the underlying expenditure detail, (c) NC State Auditor (their site was unreachable at scoping time; revisit). Multi-session work.
 - **UT charters** — LeaNbr → A-code crosswalk for 15 skipped charter LEAs
 - **VA joint-division override** — 8 unmatched joint city-county divisions
 - **PA AFR** — close PA actuals gap
@@ -126,7 +131,7 @@ Per the May 2026 systematic deadline-order investigation: NC, TN, ID, SD (Jul de
 ## Reattack candidates (deferred but data quality is high once unblocked)
 
 Highest-value targets if a Chrome-MCP automation harness gets built:
-1. **NY (2.36M)** — would push us from 92.4% → 97.6% coverage. NYSED has no bulk financial feed; would require a FOIA pull or NYSED data services contract.
+1. ~~NY (2.36M)~~ — **MOVED TO BUILDABLE** 2026-05-14. ST-3 ZIP at predictable URL after all.
 2. **NV (483k)** — per-LEA PDF discovery + parsing
 3. **NM (295k)** — Looker SaaS dashboard scraping (significant effort)
 
