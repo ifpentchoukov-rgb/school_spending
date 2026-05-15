@@ -172,6 +172,16 @@ REGISTRY: list[ExtractorSpec] = [
         fy_offset=-2,
         notes="OSPI F-196 10-year XLSX; topline = General Fund EXP by District last column",
     ),
+    # NY
+    ExtractorSpec(
+        state_postal="NY",
+        kind="actuals",
+        module="extractors.ny",
+        # NYSED publishes ST-3 ~12 months after FY end; FY24 file frozen
+        # Jun 2025. FY27 calendar maps to FY24 file in hand.
+        fy_offset=-3,
+        notes="NYSED ST-3 SAMS XLSX; topline = AT9999.0 Total General Fund Exp Actual per BEDS code",
+    ),
     # NJ adopted budget — User-Friendly Budget CSV
     ExtractorSpec(
         state_postal="NJ",

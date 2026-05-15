@@ -1,10 +1,10 @@
 # School District Budget Tracker — State-by-State Status
 
-_Last updated: 2026-05-14_
+_Last updated: 2026-05-15_
 
-**Coverage:** 44 states (+ DC) live, 41.4M / 44.8M K-12 students = **92.4% of US enrollment**.
+**Coverage:** 45 states (+ DC) live, 43.7M / 44.8M K-12 students = **97.6% of US enrollment**. NY landed 2026-05-15 (the prior "no bulk feed" deferral was wrong — NYSED publishes ST-3 at a stable URL after all).
 
-**Every US state + DC has now been investigated.** 6 are deferred for various source-side blockers (interactive portals, captchas, JS-only dashboards, lagging publication). NY is now reclassified as **buildable, queued** — the prior "no bulk feed" deferral was wrong; NYSED ST-3 publishes as a stable ZIP at `https://stateaid.nysed.gov/st3/st3data/{YYYY-YYYY}_School_Year_{YYYY-YYYY}_SAMS%20ST-3.zip` (FY24 = 13.89 MB). Same pattern as CA SACS.
+**Every US state + DC has now been investigated.** 6 are deferred for various source-side blockers (interactive portals, captchas, JS-only dashboards, lagging publication).
 
 This file is the running snapshot of which states are live, which are deferred, and what's next. Update it whenever an extractor lands, a state is deferred, or a follow-up is closed.
 
@@ -12,6 +12,7 @@ This file is the running snapshot of which states are live, which are deferred, 
 
 | State | Enroll | Status | FY | Coverage | Topline ($) | Source |
 |---|---:|---|:---:|---:|---:|---|
+| NY | 2.36M | actual ⚠️ | 2024 | 642/738 (87.0%) | $45.3B | NYSED ST-3 SAMS XLSX — non-NYC only (NYC DOE files separately) |
 | TX | 5.49M | actual / **adopted** | 2025 / 2026 | 1068/1069 / 1068/1069 | $70.8B / $67.3B | TEA PEIMS Summarized + PEIMS 030 |
 | CA | 4.26M | actual / **adopted** | 2025 / 2026 | 472/697 / 426/697 | $110.4B / $99.7B | SACS |
 | FL | 2.83M | actual / **adopted** | 2025 / 2026 | 67/68 / 67/68 | $32.0B / $34.4B | FLDOE AFR + Summary Budget |
@@ -57,12 +58,6 @@ This file is the running snapshot of which states are live, which are deferred, 
 | DC | 67k | actual | 2024 | 6/6 (100%) | TBD | OSSE Report Card Finance |
 | MT | 21k | actual | 2025 | 64/64 (100%) | TBD | OPI School Expenditures |
 
-## Buildable, queued (1 state, 2.36M enrollment) — NEW 2026-05-14
-
-| State | Enroll | Source | Notes |
-|---|---:|---|---|
-| NY | 2.36M | NYSED ST-3 ZIP | `https://stateaid.nysed.gov/st3/st3data/{YYYY-YYYY}_School_Year_{YYYY-YYYY}_SAMS%20ST-3.zip` — Excel single-file XLSX also available. 2026-05-14 investigation confirmed bulk file exists at predictable URL; the prior deferral mis-identified the href as relative-to-domain-root when it's relative-to-/st3/. Topline definition + crosswalk TBD. Same pattern as CA SACS (.zip with .mdb / .xlsx). Closing this would push coverage 92.4% → 97.6%. |
-
 ## Deferred (6 states, ~1.7M enrollment)
 
 | State | Enroll | Reason | Path forward |
@@ -107,6 +102,8 @@ Per the May 2026 systematic deadline-order investigation: NC, TN, ID, SD (Jul de
 
 ## Open follow-ups (existing extractors)
 
+- **NY NYC DOE** — 32 NYC Geographic Districts (~1.0M students, ~$36B operating spend) absent from ST-3 because NYC files separately. Path: NYC DOE Annual Report or NYC Comptroller CAFR. Closing this would push NY topline from $45.3B to ~$80B and bring NY count coverage 87% → ~100%.
+- **NY all-funds** — current topline is General Fund only (AT9999.0). Special Aid Fund (federal — F-fund), Capital Fund (H), Debt Service Fund (V) excluded. The same ST-3 file has those (FT9999.0, HT9999.0, VT9999.0, etc.) — straightforward to add as a sibling extractor or extend NY to sum across funds.
 - **NC LGC all-funds (scoped 2026-05-14, hard)** — LGC portal explicitly excludes school districts; NCDPI bulk file is SPSF (state-funded only — current source); each LEA's "Plain English Report" required by G.S. § 115C-105.25(c) is all-funds but lives on the district's own website. Realistic paths: (a) per-LEA scrape of ~196 district websites with bespoke layouts, (b) FOIA/email to NCDPI Financial and Business Services for the underlying expenditure detail, (c) NC State Auditor (their site was unreachable at scoping time; revisit). Multi-session work.
 - **UT charters** — LeaNbr → A-code crosswalk for 15 skipped charter LEAs
 - **VA joint-division override** — 8 unmatched joint city-county divisions
@@ -131,7 +128,7 @@ Per the May 2026 systematic deadline-order investigation: NC, TN, ID, SD (Jul de
 ## Reattack candidates (deferred but data quality is high once unblocked)
 
 Highest-value targets if a Chrome-MCP automation harness gets built:
-1. ~~NY (2.36M)~~ — **MOVED TO BUILDABLE** 2026-05-14. ST-3 ZIP at predictable URL after all.
+1. ~~NY (2.36M)~~ — **LIVE** 2026-05-15. NYSED ST-3 SAMS XLSX, 642 LEAs, $45.3B General Fund (non-NYC only).
 2. **NV (483k)** — per-LEA PDF discovery + parsing
 3. **NM (295k)** — Looker SaaS dashboard scraping (significant effort)
 

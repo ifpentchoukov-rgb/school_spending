@@ -1081,6 +1081,25 @@ WDE Transparency / Finance / Data Reports pages are JavaScript-rendered with no 
 
 **Decision (2026-05-06):** Defer WY extractor. ~49 districts; ~89k students. Path forward: (a) Chrome-MCP automation against WDE data dashboards, (b) FOIA WDE Finance Unit for the WDE601 bulk extract, or (c) wait for WDE to publish a static per-district expenditure XLSX similar to other states.
 
+#### NY extractor (2026-05-15) ✅
+
+NY was the biggest deferred state at 2.36M enrollment and the prior deferral note ("NYSED has no bulk financial feed") was wrong. NYSED publishes the ST-3 Annual Financial Report as a single XLSX (~14 MB) on its State Aid site at a stable URL pattern. The href in the directory page is relative to `/st3/` not domain-root — when corrected, FY24 returns HTTP 200.
+
+- `extractors/ny.py` pulls `https://stateaid.nysed.gov/st3/st3data/{fy-1}-{fy}_School_Year_{fy}-{fy+1}_SAMS%20ST-3.xlsx`. URL pattern is fully derivable; no `KNOWN_FILE_URLS` map needed.
+- File structure: ST-3 Data sheet is a wide-format pivot — ~970 entity rows × ~4,200 line-item columns. Header row 2 (1-indexed) contains the SED Legacy code per column (e.g. `'49:459'` = the AT9999.0 line in Schedule A4c, "TOTAL GENERAL FUND EXPENDITURES AND INTERFUND TRANSFERS — Actual Column"). The SFList sheet is the column legend; we use it to locate the Legacy code → account mapping.
+- Topline: column where row 2 == `'49:459'` — General-Fund-only Total Expenditures + Interfund Transfers (Actual). Aligned with F-33 'current expenditures' frame. Special Aid Fund (federal — F), Capital Fund (H), Debt Service Fund (V) excluded; queued as a sibling all-funds extractor.
+- Crosswalk: master `state_leaid` `NY-{6-digit BEDS}{2-digit type code}{4-digit code}` → first 6 digits == ST-3 BEDS code. Charters (type code `86`) file ST-3D (separate form), so we filter them out — otherwise they'd collide with the parent district's BEDS6 (e.g. ROCHESTER ACADEMY OF SCIENCE CHARTER `NY-261600861193` and ROCHESTER CITY SD `NY-261600010000` both have BEDS6 `261600`).
+- Latest published: FY24 (SY 2023-24, frozen 2025-06-11). Registered with `kind=actuals, fy_offset=-3` (FY27 calendar runs trigger the FY24 fetch).
+- Coverage: 642 of 738 master NY operating LEAs (87%). The 96 missing are: 32 NYC Geographic Districts (NYC DOE files separately, not via ST-3), and 64 charter LEAs (ST-3D). 48 ST-3 entities with no master match (BOCES, special schools — not in our operating-LEA universe).
+- NY total FY24 General Fund expenditure (non-NYC): **$45.27B**.
+- Spot check: Buffalo $1.02B, Rochester $807M, Yonkers $706M, Brentwood $507M, Syracuse $497M, Sachem $368M, Newburgh $333M, New Rochelle $323M, Albany $292M — all match expected scale.
+- Idempotent. Re-run produces records_changed=0.
+
+**Open NY follow-ups:**
+- NYC DOE (~$36B operating spend) — sibling extractor against NYC DOE Annual Report or NYC Comptroller CAFR. Closing this brings NY count coverage 87% → ~100%.
+- All-funds — extend or sibling: also sum FT9999.0 (Special Aid), HT9999.0 (Capital), VT9999.0 (Debt Service) per district.
+- ST-3D for charters — separate file from NYSED for charter LEA financials.
+
 ---
 
 ## 7. Conventions
