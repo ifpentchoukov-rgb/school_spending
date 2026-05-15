@@ -41,11 +41,13 @@ from supabase import Client
 
 from extractors._base import (
     BudgetEventInput,
+    ComponentInput,
     Run,
     fetch_all,
     sha256_bytes,
     upload_source_document,
     upsert_budget_event_with_supersession,
+    upsert_components,
     upsert_source_document_row,
 )
 
@@ -98,6 +100,48 @@ def _find_fy_block(header: tuple, target_fy: int, ws) -> int:
     raise RuntimeError(f"FY {target_fy} not found in DATA sheet locator row")
 
 
+# Phase 7.4 — DPI Comparative Cost cost-column positions within an FY
+# block (8 cols per FY: fiscal_year, member, instruct, support, admin,
+# operations, trans, facility, food). Mapping cost-column offset →
+# canonical category.
+WI_COMPONENT_OFFSETS: dict[str, tuple[int, str]] = {
+    "instruction": (
+        2,
+        "DPI Comparative Cost 'instruct' column — instruction (WUFAR Function 100000)",
+    ),
+    "support_services_student": (
+        3,
+        "DPI Comparative Cost 'support' column — combined pupil + instructional staff "
+        "support (WUFAR Functions 210000+220000); WI does not separate the two",
+    ),
+    "administration": (
+        4,
+        "DPI Comparative Cost 'admin' column — combined district + school admin + "
+        "business (WUFAR Functions 230000+240000+250000)",
+    ),
+    "operations_maintenance": (
+        5,
+        "DPI Comparative Cost 'operations' column — operation & maintenance of plant "
+        "(WUFAR Function 260000)",
+    ),
+    "transportation": (
+        6,
+        "DPI Comparative Cost 'trans' column — pupil transportation "
+        "(WUFAR Function 270000)",
+    ),
+    "capital_outlay": (
+        7,
+        "DPI Comparative Cost 'facility' column — facilities acquisition + "
+        "improvements (WUFAR Function 280000)",
+    ),
+    "food_service": (
+        8,
+        "DPI Comparative Cost 'food' column — food service operations "
+        "(WUFAR Function 410000 / 420000)",
+    ),
+}
+
+
 def parse_compcost(xlsx_bytes: bytes, fiscal_year: int) -> list[dict]:
     wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes), data_only=True)
     ws = wb["DATA"]
@@ -129,7 +173,26 @@ def parse_compcost(xlsx_bytes: bytes, fiscal_year: int) -> list[dict]:
                 continue
         if total <= 0:
             continue
-        out.append({"code": f"{code:04d}", "total_op_exp": total})
+
+        # Phase 7.4 — canonical category breakdown
+        components: dict[str, float] = {}
+        for category, (offset, _def) in WI_COMPONENT_OFFSETS.items():
+            cv = r[fy_col + offset] if fy_col + offset < len(r) else None
+            if cv is None:
+                continue
+            try:
+                amt = float(cv)
+            except (TypeError, ValueError):
+                continue
+            if amt > 0:
+                components[category] = amt
+
+        out.append({
+            "code": f"{code:04d}",
+            "total_op_exp": total,
+            "components": components,
+            "fy_col": fy_col,
+        })
     return out
 
 
@@ -206,6 +269,9 @@ def extract(*, fiscal_year: int = 2024, triggered_by: str = "manual") -> dict:
         print(f"  DPI districts with FY{fiscal_year} cost data: {len(district_data):,}")
 
         no_match: list[str] = []
+        n_components_inserted = 0
+        n_components_updated = 0
+        n_components_unchanged = 0
         for d in district_data:
             district = crosswalk.get(d["code"])
             if district is None:
@@ -221,16 +287,45 @@ def extract(*, fiscal_year: int = 2024, triggered_by: str = "manual") -> dict:
                 source_document_id=src_id,
                 extraction_run_id=run.run_id,
             )
-            _, changed = upsert_budget_event_with_supersession(
+            event_id, changed = upsert_budget_event_with_supersession(
                 client=client, event=event
             )
             run.records_extracted += 1
             if changed:
                 run.records_changed += 1
 
+            # Phase 7.4 — emit canonical category components.
+            components: list[ComponentInput] = []
+            for category, amount in d.get("components", {}).items():
+                offset, definition = WI_COMPONENT_OFFSETS[category]
+                components.append(
+                    ComponentInput(
+                        category=category,
+                        amount=float(amount),
+                        definition=definition,
+                        line_or_cell_reference=(
+                            f"Sheet 'DATA'; cell at FY-block col {d['fy_col']}+{offset} "
+                            f"on row with CODE={d['code'].lstrip('0') or '0'}"
+                        ),
+                    )
+                )
+            if components:
+                ins, upd, unch = upsert_components(
+                    client=client,
+                    budget_event_id=event_id,
+                    components=components,
+                )
+                n_components_inserted += ins
+                n_components_updated += upd
+                n_components_unchanged += unch
+
         print(
             f"  inserted/changed={run.records_changed}/{run.records_extracted}; "
             f"unmatched DPI codes: {len(no_match)}"
+        )
+        print(
+            f"  components: inserted={n_components_inserted} "
+            f"updated={n_components_updated} unchanged={n_components_unchanged}"
         )
 
     return {

@@ -46,11 +46,13 @@ from supabase import Client
 
 from extractors._base import (
     BudgetEventInput,
+    ComponentInput,
     Run,
     fetch_all,
     sha256_bytes,
     upload_source_document,
     upsert_budget_event_with_supersession,
+    upsert_components,
     upsert_source_document_row,
 )
 
@@ -79,6 +81,28 @@ USER_AGENT = "school-budget-tracker/0.1 (https://github.com/ifpentchoukov-rgb/sc
 # (header in row 3): cols 2 through 15 inclusive cover Function 1000-3900.
 OP_COL_START = 2  # Instruction 1000
 OP_COL_END = 15  # Other Non-Instruction 3900
+
+# Phase 7.4 — canonical category mapping for KY. Column indexes are
+# 0-based against the AFR Expenditures sheet's data rows (row 3+).
+# Each entry: canonical category -> (list of col indexes, definition fragment).
+KY_COMPONENT_COLS: dict[str, tuple[list[int], str]] = {
+    "instruction": ([2], "KDE AFR Function 1000 (Instruction)"),
+    "support_services_student": ([3], "KDE AFR Function 2100 (Student Support)"),
+    "support_services_instruction": ([4], "KDE AFR Function 2200 (Instruction Staff)"),
+    "administration": (
+        [5, 6, 7],
+        "KDE AFR Functions 2300 (District Admin) + 2400 (School Admin) + 2500 (Business)",
+    ),
+    "operations_maintenance": ([8], "KDE AFR Function 2600 (Plant Operations)"),
+    "transportation": ([9], "KDE AFR Function 2700 (Pupil Transportation)"),
+    "food_service": ([11], "KDE AFR Function 3100 (Food Service)"),
+    "capital_outlay": (
+        [16, 17, 18, 19, 20, 21, 22, 23],
+        "KDE AFR Function 4100-4900 (Facilities — Land Acquisition, Improvements, "
+        "Architecture, Building Construction/Improvement, Other Facilities Acquisition)",
+    ),
+    "debt_service": ([24], "KDE AFR Function 5100 (Debt Service)"),
+}
 
 
 def file_url(fiscal_year: int) -> str:
@@ -142,7 +166,30 @@ def parse_ky(xlsx_bytes: bytes, fiscal_year: int) -> list[dict]:
                 continue
         if total <= 0:
             continue
-        out.append({"code": code, "name": m.group(2), "total_op_exp": total})
+
+        # Phase 7.4 — canonical category breakdown
+        components: dict[str, float] = {}
+        for category, (col_idxs, _def) in KY_COMPONENT_COLS.items():
+            cat_total = 0.0
+            for ci in col_idxs:
+                if ci >= len(r):
+                    continue
+                v = r[ci]
+                if v is None or v == "":
+                    continue
+                try:
+                    cat_total += float(v)
+                except (TypeError, ValueError):
+                    continue
+            if cat_total > 0:
+                components[category] = cat_total
+
+        out.append({
+            "code": code,
+            "name": m.group(2),
+            "total_op_exp": total,
+            "components": components,
+        })
     return out
 
 
@@ -220,6 +267,9 @@ def extract(*, fiscal_year: int = 2024, triggered_by: str = "manual") -> dict:
         print(f"  KDE districts with FY{fiscal_year} expenditures: {len(district_data):,}")
 
         no_match: list[str] = []
+        n_components_inserted = 0
+        n_components_updated = 0
+        n_components_unchanged = 0
         for d in district_data:
             district = crosswalk.get(d["code"])
             if district is None:
@@ -235,16 +285,45 @@ def extract(*, fiscal_year: int = 2024, triggered_by: str = "manual") -> dict:
                 source_document_id=src_id,
                 extraction_run_id=run.run_id,
             )
-            _, changed = upsert_budget_event_with_supersession(
+            event_id, changed = upsert_budget_event_with_supersession(
                 client=client, event=event
             )
             run.records_extracted += 1
             if changed:
                 run.records_changed += 1
 
+            # Phase 7.4 — emit canonical category components.
+            components: list[ComponentInput] = []
+            for category, amount in d.get("components", {}).items():
+                col_idxs, definition = KY_COMPONENT_COLS[category]
+                components.append(
+                    ComponentInput(
+                        category=category,
+                        amount=float(amount),
+                        definition=definition,
+                        line_or_cell_reference=(
+                            f"Sheet '{fiscal_year} AFR Expenditures '; "
+                            f"sum cols {col_idxs} on row for district '{d['code']} {d['name']}'"
+                        ),
+                    )
+                )
+            if components:
+                ins, upd, unch = upsert_components(
+                    client=client,
+                    budget_event_id=event_id,
+                    components=components,
+                )
+                n_components_inserted += ins
+                n_components_updated += upd
+                n_components_unchanged += unch
+
         print(
             f"  inserted/changed={run.records_changed}/{run.records_extracted}; "
             f"unmatched KDE codes: {len(no_match)}"
+        )
+        print(
+            f"  components: inserted={n_components_inserted} "
+            f"updated={n_components_updated} unchanged={n_components_unchanged}"
         )
 
     return {

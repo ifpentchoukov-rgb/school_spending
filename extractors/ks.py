@@ -52,11 +52,13 @@ from supabase import Client
 
 from extractors._base import (
     BudgetEventInput,
+    ComponentInput,
     Run,
     fetch_all,
     sha256_bytes,
     upload_source_document,
     upsert_budget_event_with_supersession,
+    upsert_components,
     upsert_source_document_row,
 )
 
@@ -95,8 +97,24 @@ def _to_int(s: str | None) -> int:
         return 0
 
 
+# Phase 7.4 — CSV per-pupil column → canonical category mapping. Values
+# are per-pupil dollars; we multiply by master enrollment_fy25 in the
+# extract loop to recover total dollars (matching the topline reconstruction).
+KS_PERPUPIL_COLS: dict[str, tuple[str, str]] = {
+    "instruction": ("Instruction", "KSDE CPFS Instruction (per-pupil)"),
+    "support_services_student": ("StudentSupport", "KSDE CPFS Student Support (per-pupil)"),
+    "support_services_instruction": ("StaffSupport", "KSDE CPFS Staff Support (per-pupil)"),
+    "administration": ("Administration", "KSDE CPFS Administration (per-pupil)"),
+    "operations_maintenance": ("OperationsMaint", "KSDE CPFS Operations & Maintenance (per-pupil)"),
+    "transportation": ("Transportation", "KSDE CPFS Transportation (per-pupil)"),
+    "food_service": ("FoodService", "KSDE CPFS Food Service (per-pupil)"),
+    "capital_outlay": ("Capital", "KSDE CPFS Capital (per-pupil)"),
+    "debt_service": ("DebtService", "KSDE CPFS Debt Service (per-pupil)"),
+}
+
+
 def parse_ks(csv_bytes: bytes, fiscal_year: int) -> list[dict]:
-    """Return [{usd: int, per_pupil_op: int}] for the given fiscal_year."""
+    """Return [{usd, per_pupil_op, per_pupil_components}] for the FY."""
     text = csv_bytes.decode("utf-8-sig", errors="replace")
     rdr = csv.DictReader(io.StringIO(text))
     out: list[dict] = []
@@ -122,7 +140,17 @@ def parse_ks(csv_bytes: bytes, fiscal_year: int) -> list[dict]:
         )
         if op <= 0:
             continue
-        out.append({"usd": usd, "per_pupil_op": op})
+        # Phase 7.4 — per-pupil category breakdown
+        pp_components: dict[str, int] = {}
+        for category, (csv_col, _def) in KS_PERPUPIL_COLS.items():
+            v = _to_int(row.get(csv_col))
+            if v > 0:
+                pp_components[category] = v
+        out.append({
+            "usd": usd,
+            "per_pupil_op": op,
+            "per_pupil_components": pp_components,
+        })
     return out
 
 
@@ -198,6 +226,9 @@ def extract(*, fiscal_year: int = 2025, triggered_by: str = "manual") -> dict:
 
         no_match: list[str] = []
         no_enroll: list[int] = []
+        n_components_inserted = 0
+        n_components_updated = 0
+        n_components_unchanged = 0
         for d in district_data:
             district = crosswalk.get(d["usd"])
             if district is None:
@@ -218,16 +249,48 @@ def extract(*, fiscal_year: int = 2025, triggered_by: str = "manual") -> dict:
                 source_document_id=src_id,
                 extraction_run_id=run.run_id,
             )
-            _, changed = upsert_budget_event_with_supersession(
+            event_id, changed = upsert_budget_event_with_supersession(
                 client=client, event=event
             )
             run.records_extracted += 1
             if changed:
                 run.records_changed += 1
 
+            # Phase 7.4 — reconstruct per-category dollars from per-pupil × enrollment.
+            components: list[ComponentInput] = []
+            for category, per_pupil in d.get("per_pupil_components", {}).items():
+                csv_col, _def = KS_PERPUPIL_COLS[category]
+                components.append(
+                    ComponentInput(
+                        category=category,
+                        amount=float(per_pupil) * float(enrollment),
+                        definition=(
+                            f"{_def}; reconstructed to total dollars by "
+                            f"multiplying per-pupil value by master enrollment_fy25"
+                        ),
+                        line_or_cell_reference=(
+                            f"CSV row: Year={fiscal_year}, USDNumber={d['usd']}, "
+                            f"column '{csv_col}'; total = value × enrollment_fy25"
+                        ),
+                    )
+                )
+            if components:
+                ins, upd, unch = upsert_components(
+                    client=client,
+                    budget_event_id=event_id,
+                    components=components,
+                )
+                n_components_inserted += ins
+                n_components_updated += upd
+                n_components_unchanged += unch
+
         print(
             f"  inserted/changed={run.records_changed}/{run.records_extracted}; "
             f"unmatched USDs: {len(no_match)}; missing enrollment: {len(no_enroll)}"
+        )
+        print(
+            f"  components: inserted={n_components_inserted} "
+            f"updated={n_components_updated} unchanged={n_components_unchanged}"
         )
 
     return {

@@ -1138,7 +1138,17 @@ NY was the biggest deferred state at 2.36M enrollment and the prior deferral not
     - **moderate** (26): OH, CO, IA, AR, OK, OR, WA, NJ, IN, MA, VA, GA, MO, MN, NE, TN, AZ, MS, ID, SD, ND, MT, UT, LA, FL, CA.
     - **thin** (11): AL, VT, NH, HI, ME, MD, SC, NC, DC, CT, WV.
     - **deferred** (6): NV, NM, AK, RI, DE, WY.
-- [ ] **7.4 — Extractor extensions, rich-tier states first.** Each module's `parse_*` function adds a `components: list[ComponentInput]` field alongside the existing topline emission. Idempotent per `(budget_event_id, category)`. Order: TX → MI → NY → IL → PA → KY → WI → KS.
+- [x] **7.4 — Extractor extensions, rich-tier states.** `extractors/_base.py` gained `ComponentInput` dataclass + `upsert_components()` helper (SELECT-then-diff for idempotency). Component emission landed 2026-05-15 across 7 rich-tier states + 1 demotion:
+    - TX (1,068 events × 12 categories = **12,816** components) — PEIMS function/object grid
+    - MI (603 × 13 = **7,632**) — Bulletin 1011 per-(district,fund) aggregated
+    - NY (642 × 8 = **5,136**) — ST-3 Schedule A4 AT-totals + cross-fund (CT/HT)
+    - PA (490 × ~8 = **4,014**) — GFB Exp sheet function-object grid; benefits via Object 200 across all functions
+    - WI (367 × 7 = **2,554**) — DPI Comparative Cost 7 named cost columns
+    - KS (284 × ~9 = **2,421**) — Kansas Open Gov CSV; per-pupil × enrollment reconstruction
+    - KY (167 × ~8 = **1,387**) — KDE AFR Function 1000-5100 columns
+    - **IL: demoted to moderate** — OEPP-PCTC file is topline-only; no function/object breakdown. IL state_extractor_metadata.coverage_tier updated. ISBE AFR (IWAS-gated) would unlock rich tier; queued.
+    
+    **Total: 35,960 component rows across 3,621 budget events.** All extractors idempotent.
 - [ ] **7.5 — Universal floor pass.** For moderate-tier states whose source includes debt service + capital outlay as separable lines, emit those two categories at minimum. Goal: every district with a `budget_events` row also has ≥2 `budget_event_components` rows (or an explicit `no_breakdown_available=true` marker).
 - [ ] **7.6 — `v_per_pupil_metrics` view.** Joins `budget_events`, `districts`, `budget_event_components` to expose `topline_per_pupil`, plus per-category per-pupil columns. Used by §9 rankings and §10 API.
 
