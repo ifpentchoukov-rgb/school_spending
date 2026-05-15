@@ -62,11 +62,13 @@ from supabase import Client
 
 from extractors._base import (
     BudgetEventInput,
+    ComponentInput,
     Run,
     fetch_all,
     sha256_bytes,
     upload_source_document,
     upsert_budget_event_with_supersession,
+    upsert_components,
     upsert_source_document_row,
 )
 from extractors._exceptions import SourceNotYetPublished
@@ -89,6 +91,66 @@ USER_AGENT = "school-budget-tracker/0.1 (https://github.com/ifpentchoukov-rgb/sc
 # scan for this exact string. NYSED's account-code → legacy-code map
 # is in SFList; this entry is row 461 there with Account Code AT9999.0.
 TARGET_LEGACY_CODE = "49:459"
+
+# Phase 7.4 — canonical-category mapping for NY ST-3.
+# Each entry: canonical_category -> (legacy_code, definition_fragment).
+# Code structure:
+#   AT*.0 within the GF (49:XXX rows) are GF function subtotals.
+#   HT9999, FT9999, CT9999, VT9999 are cross-fund totals (Capital,
+#   Special Aid, School Lunch, Debt Service Funds).
+# 8 categories emitted; gaps:
+#   support_services_instruction — not a clean NY bucket (Schedule A4b
+#     "Administration and Improvement" mixes admin + curriculum).
+#   operations_maintenance — folded into NY Schedule A4a General Support
+#     (A1620-A1639); to break out we'd need to sum individual A16XX
+#     codes. Deferred; for now O&M is part of `administration`.
+#   revenue_federal/state/local — Schedule A3 (GF Revenues) codes
+#     not yet mapped. Deferred.
+NY_COMPONENT_MAPPING: dict[str, tuple[str, str]] = {
+    "instruction": (
+        "49:301",
+        "ST-3 Schedule A4b Line 326 AT2999.0 TOTAL INSTRUCTION — Actual Column",
+    ),
+    "support_services_student": (
+        "49:300",
+        "ST-3 Schedule A4b Line 325 AT2899.0 TOTAL PUPIL SERVICES — Actual Column "
+        "(includes guidance, health, psychology, co-curricular)",
+    ),
+    "administration": (
+        "49:124",
+        "ST-3 Schedule A4a Line 135 AT1999.0 TOTAL GENERAL SUPPORT — Actual Column "
+        "(includes Board of Education, Central Admin, Finance, Staff, Central "
+        "Services — and operations/maintenance, which NY does not break out "
+        "separately in this aggregate)",
+    ),
+    "transportation": (
+        "49:330",
+        "ST-3 Schedule A4c Line 345 AT5599.0 TOTAL PUPIL TRANSPORTATION — Actual Column",
+    ),
+    "employee_benefits": (
+        "49:380",
+        "ST-3 Schedule A4c Line 384 AT9098.0 TOTAL EMPLOYEE BENEFITS — Actual Column "
+        "(General Fund only — health/dental/retirement/FICA across all "
+        "function categories)",
+    ),
+    "debt_service": (
+        "49:451",
+        "ST-3 Schedule A4c Line 456 AT9898.0 TOTAL DEBT SERVICE — Actual Column "
+        "(General Fund only; Debt Service Fund VT9999 is separate)",
+    ),
+    "food_service": (
+        "59:019",
+        "ST-3 Schedule C3 Line 19 CT9999.0 TOTAL SCHOOL FOOD SERVICE PROGRAMS "
+        "EXPENDITURES AND INTERFUND TRANSFERS — Actual Column "
+        "(School Lunch Fund — separate from General Fund)",
+    ),
+    "capital_outlay": (
+        "67:171",
+        "ST-3 Schedule G3 Line 14 HT9999.0 TOTAL CAPITAL FUND EXPENDITURES AND "
+        "INTERFUND TRANSFERS — Actual Column (Capital Fund — separate from "
+        "General Fund; not double-counted in topline)",
+    ),
+}
 
 # Layout of ST-3 Data (1-indexed by openpyxl, 0-indexed in iter_rows):
 #   row 1 (idx 0): column index numbers (1, 2, 3, ...)
@@ -135,7 +197,8 @@ def download(url: str) -> bytes:
 
 def parse_st3(xlsx_bytes: bytes) -> list[dict]:
     """Read the ST-3 Data sheet and pull AT9999.0 (Total GF Exp Actual)
-    per BEDS code. Returns [{beds, name, total_gf_exp}, ...]."""
+    plus the Phase 7.4 canonical category columns per BEDS code.
+    Returns [{beds, name, total_gf_exp, components: {category: amount}}, ...]."""
     wb = openpyxl.load_workbook(BytesIO(xlsx_bytes), read_only=True, data_only=True)
     if "ST-3 Data" not in wb.sheetnames:
         raise RuntimeError(
@@ -144,13 +207,25 @@ def parse_st3(xlsx_bytes: bytes) -> list[dict]:
     ws = wb["ST-3 Data"]
 
     target_col_idx: int | None = None
+    # category -> column index for that category's Legacy code
+    component_col_idx: dict[str, int] = {}
     out: list[dict] = []
+    needed_codes: set[str] = {TARGET_LEGACY_CODE} | {
+        code for code, _def in NY_COMPONENT_MAPPING.values()
+    }
+    code_to_category: dict[str, str] = {
+        code: cat for cat, (code, _) in NY_COMPONENT_MAPPING.items()
+    }
+
     for i, row in enumerate(ws.iter_rows(values_only=True)):
         if i == LEGACY_HEADER_ROW_IDX:
             for j, v in enumerate(row):
+                if v not in needed_codes:
+                    continue
                 if v == TARGET_LEGACY_CODE:
                     target_col_idx = j
-                    break
+                else:
+                    component_col_idx[code_to_category[v]] = j
             if target_col_idx is None:
                 raise RuntimeError(
                     f"Could not find target Legacy code '{TARGET_LEGACY_CODE}' "
@@ -168,10 +243,23 @@ def parse_st3(xlsx_bytes: bytes) -> list[dict]:
                 continue
             if value <= 0:
                 continue  # don't emit zero/negative toplines
+
+            # Pull canonical-category amounts for this BEDS row.
+            components: dict[str, float] = {}
+            for category, col_idx in component_col_idx.items():
+                cv = row[col_idx]
+                if cv is None:
+                    continue
+                try:
+                    components[category] = float(cv)
+                except (TypeError, ValueError):
+                    continue
+
             out.append({
                 "beds": str(beds_raw).strip().zfill(6),
                 "name": str(name_raw or "").strip(),
                 "total_gf_exp": value,
+                "components": components,
             })
     return out
 
@@ -260,6 +348,9 @@ def extract(*, fiscal_year: int = 2024, triggered_by: str = "manual") -> dict:
         print(f"  ST-3 entities with positive GF Exp Actual: {len(district_totals):,}")
 
         no_match: list[str] = []
+        n_components_inserted = 0
+        n_components_updated = 0
+        n_components_unchanged = 0
         for d in district_totals:
             district = crosswalk.get(d["beds"])
             if district is None:
@@ -275,16 +366,47 @@ def extract(*, fiscal_year: int = 2024, triggered_by: str = "manual") -> dict:
                 source_document_id=src_id,
                 extraction_run_id=run.run_id,
             )
-            _, changed = upsert_budget_event_with_supersession(
+            event_id, changed = upsert_budget_event_with_supersession(
                 client=client, event=event
             )
             run.records_extracted += 1
             if changed:
                 run.records_changed += 1
 
+            # Phase 7.4 — emit canonical category components.
+            components: list[ComponentInput] = []
+            for category, amount in d.get("components", {}).items():
+                if amount is None:
+                    continue
+                _legacy, definition = NY_COMPONENT_MAPPING[category]
+                components.append(
+                    ComponentInput(
+                        category=category,
+                        amount=float(amount),
+                        definition=definition,
+                        line_or_cell_reference=(
+                            f"Sheet 'ST-3 Data'; column where row 2 == "
+                            f"'{_legacy}'; row for BEDS=={d['beds']}"
+                        ),
+                    )
+                )
+            if components:
+                ins, upd, unch = upsert_components(
+                    client=client,
+                    budget_event_id=event_id,
+                    components=components,
+                )
+                n_components_inserted += ins
+                n_components_updated += upd
+                n_components_unchanged += unch
+
         print(
             f"  inserted/changed={run.records_changed}/{run.records_extracted}; "
             f"unmatched BEDS: {len(no_match)}"
+        )
+        print(
+            f"  components: inserted={n_components_inserted} "
+            f"updated={n_components_updated} unchanged={n_components_unchanged}"
         )
 
     return {
