@@ -35,11 +35,13 @@ from supabase import Client
 
 from extractors._base import (
     BudgetEventInput,
+    ComponentInput,
     Run,
     fetch_all,
     sha256_bytes,
     upload_source_document,
     upsert_budget_event_with_supersession,
+    upsert_components,
     upsert_source_document_row,
 )
 
@@ -63,6 +65,122 @@ TOPLINE_DEFINITION = (
     "TEA PEIMS Summarized Financial Data, "
     "ALL FUNDS-TOTAL OPERATING EXPENDITURES BY OBJ"
 )
+
+
+# Phase 7.4 canonical-category mapping. Each entry maps a canonical
+# expenditure_category to a list of (PEIMS column, definition fragment)
+# tuples that get summed. We use the "ALL FUNDS-" variants throughout
+# for consistency with the topline (which is also all-funds). 12 of the
+# 14 canonical categories are extractable from PEIMS; employee_benefits
+# is omitted because PEIMS Object 6100 ("TOTAL PAYROLL") combines
+# salaries + benefits and the bulk summary doesn't expose the 614X
+# split. `other` is omitted by design — left as residual.
+COMPONENT_MAPPING: dict[str, list[tuple[str, str]]] = {
+    "instruction": [
+        (
+            "ALL FUNDS-INSTRUCTION + TRANSFER EXPEND-FCT11,95",
+            "PEIMS FCT11 (Instruction) + FCT95 (Juvenile Justice AEP)",
+        ),
+    ],
+    "support_services_student": [
+        (
+            "ALL FUNDS-GUIDANCE & COUNSELING SERVICES EXP, FCT31",
+            "PEIMS FCT31 (Guidance & Counseling)",
+        ),
+        (
+            "ALL FUNDS-SOCIAL WORK SERVICES EXP, FCT32",
+            "PEIMS FCT32 (Social Work)",
+        ),
+        (
+            "ALL FUNDS-HEALTH SERVICES EXP, FCT33",
+            "PEIMS FCT33 (Health Services)",
+        ),
+    ],
+    "support_services_instruction": [
+        (
+            "ALL FUNDS-INSTRUC RESOURCE MEDIA SERVICE EXP, FCT12",
+            "PEIMS FCT12 (Instructional Resources/Media)",
+        ),
+        (
+            "ALL FUNDS-CURRICULUM/STAFF DEVELOPMENT EXP, FCT13",
+            "PEIMS FCT13 (Curriculum/Staff Development)",
+        ),
+        (
+            "ALL FUNDS-INSTRUC LEADERSHIP EXPEND, FCT21",
+            "PEIMS FCT21 (Instructional Leadership)",
+        ),
+    ],
+    "administration": [
+        (
+            "ALL FUNDS-CAMPUS ADMINISTRATION EXPEND, FCT23",
+            "PEIMS FCT23 (Campus Administration)",
+        ),
+        (
+            "ALL FUNDS-GENERAL ADMINISTRAT EXPEND-FCT41,92",
+            "PEIMS FCT41 (General Administration) + FCT92 (Incremental Costs)",
+        ),
+    ],
+    "operations_maintenance": [
+        (
+            "ALL FUNDS-PLANT MAINTENANCE/OPERA EXPEND, FCT51",
+            "PEIMS FCT51 (Plant Maintenance/Operations)",
+        ),
+        (
+            "ALL FUNDS-SECURITY/MONITORING SERVICE EXPEND, FCT52",
+            "PEIMS FCT52 (Security/Monitoring)",
+        ),
+        (
+            "ALL FUNDS-DATA PROCESSING SERVICES EXPEND, FCT53",
+            "PEIMS FCT53 (Data Processing Services)",
+        ),
+    ],
+    "transportation": [
+        (
+            "ALL FUNDS-TRANSPORTATION EXPENDITURES, FCT34",
+            "PEIMS FCT34 (Transportation)",
+        ),
+    ],
+    "food_service": [
+        (
+            "ALL FUNDS-FOOD SERVICE EXPENDITURES, FCT35",
+            "PEIMS FCT35 (Food Service)",
+        ),
+    ],
+    "capital_outlay": [
+        (
+            "ALL FUNDS-TOTAL CAPITAL PROJECTS EXPEND BY OBJ",
+            "PEIMS Object 6600 (Capital Outlay) — all funds",
+        ),
+    ],
+    "debt_service": [
+        (
+            "ALL FUNDS-TOTAL DEBT SERVICE EXPEND BY OBJ",
+            "PEIMS Object 6500 (Debt Service) — all funds",
+        ),
+    ],
+    "revenue_federal": [
+        (
+            "ALL FUNDS-FEDERAL REVENUE",
+            "PEIMS All Funds Federal Revenue",
+        ),
+    ],
+    "revenue_state": [
+        (
+            "ALL FUNDS-STATE REVENUE",
+            "PEIMS All Funds State Revenue",
+        ),
+    ],
+    "revenue_local": [
+        (
+            "ALL FUNDS-LOCAL TAX REVENUE FROM M&O",
+            "PEIMS All Funds Local Tax Revenue (M&O)",
+        ),
+        (
+            "ALL FUNDS-OTHER LOCAL & INTERMEDIATE REVENUE",
+            "PEIMS All Funds Other Local & Intermediate Revenue",
+        ),
+    ],
+}
 
 
 def download_bulk_excel() -> bytes:
@@ -93,12 +211,27 @@ def build_tx_crosswalk(client: Client) -> dict[str, dict]:
     return out
 
 
+def _all_component_cols() -> list[str]:
+    """Flatten COMPONENT_MAPPING into the unique list of PEIMS source cols."""
+    out: list[str] = []
+    seen: set[str] = set()
+    for col_specs in COMPONENT_MAPPING.values():
+        for col, _def in col_specs:
+            if col not in seen:
+                seen.add(col)
+                out.append(col)
+    return out
+
+
 def parse_peims(xlsx_bytes: bytes, fiscal_year: int) -> pd.DataFrame:
-    """Return df with columns: tx_dist_num, fiscal_year, topline, prior_topline."""
+    """Return df with: tx_dist_num, fiscal_year, topline, prior_topline,
+    plus one column per source PEIMS column that feeds a canonical category.
+    """
+    cols_needed = ["DISTRICT NUMBER", "YEAR", TOPLINE_COL] + _all_component_cols()
     df = pd.read_excel(
         BytesIO(xlsx_bytes),
         sheet_name=SHEET_NAME,
-        usecols=["DISTRICT NUMBER", "YEAR", TOPLINE_COL],
+        usecols=cols_needed,
     )
     df["DISTRICT NUMBER"] = (
         df["DISTRICT NUMBER"].astype(str).str.lstrip("'").str.strip()
@@ -112,10 +245,49 @@ def parse_peims(xlsx_bytes: bytes, fiscal_year: int) -> pd.DataFrame:
     )
     df["topline"] = pd.to_numeric(df["topline"], errors="coerce")
     df["fiscal_year"] = pd.to_numeric(df["fiscal_year"], errors="coerce").astype("Int64")
+    # Coerce all source-component columns to numeric so summing works.
+    for col in _all_component_cols():
+        df[col] = pd.to_numeric(df[col], errors="coerce")
     df = df.dropna(subset=["tx_dist_num", "fiscal_year", "topline"])
     df = df.sort_values(["tx_dist_num", "fiscal_year"])
     df["prior_topline"] = df.groupby("tx_dist_num")["topline"].shift(1)
     return df[df["fiscal_year"] == fiscal_year].copy()
+
+
+def _row_to_components(row: pd.Series) -> list[ComponentInput]:
+    """Map one PEIMS row to a list of ComponentInputs.
+
+    For each canonical category in COMPONENT_MAPPING, sum the listed
+    PEIMS columns. If all source values are NaN, skip the category
+    (the district didn't report). If the sum is finite (including 0),
+    emit a ComponentInput.
+    """
+    out: list[ComponentInput] = []
+    for category, col_specs in COMPONENT_MAPPING.items():
+        amounts: list[float] = []
+        defs: list[str] = []
+        cells: list[str] = []
+        for src_col, def_fragment in col_specs:
+            v = row.get(src_col)
+            if v is not None and not pd.isna(v):
+                amounts.append(float(v))
+                defs.append(def_fragment)
+                cells.append(src_col)
+        if not amounts:
+            continue
+        out.append(
+            ComponentInput(
+                category=category,
+                amount=sum(amounts),
+                definition=" + ".join(defs),
+                line_or_cell_reference=(
+                    f"Sheet='{SHEET_NAME}' filter DISTRICT NUMBER=={row['tx_dist_num']} "
+                    f"YEAR=={int(row['fiscal_year'])}; sum of columns "
+                    f"[{', '.join(repr(c) for c in cells)}]"
+                ),
+            )
+        )
+    return out
 
 
 def extract(*, fiscal_year: int = 2025, triggered_by: str = "manual") -> dict:
@@ -169,6 +341,9 @@ def extract(*, fiscal_year: int = 2025, triggered_by: str = "manual") -> dict:
         print(f"  PEIMS rows for FY{fiscal_year}: {len(df):,}")
 
         no_match: list[str] = []
+        n_components_inserted = 0
+        n_components_updated = 0
+        n_components_unchanged = 0
         for _, row in df.iterrows():
             key = str(row["tx_dist_num"]).lstrip("0")
             district = crosswalk.get(key)
@@ -196,16 +371,32 @@ def extract(*, fiscal_year: int = 2025, triggered_by: str = "manual") -> dict:
                 yoy_change_dollars=yoy_dollars,
                 prior_year_baseline=prior,
             )
-            _, changed = upsert_budget_event_with_supersession(
+            event_id, changed = upsert_budget_event_with_supersession(
                 client=client, event=event
             )
             run.records_extracted += 1
             if changed:
                 run.records_changed += 1
 
+            # Phase 7.4 — emit canonical category components for this event.
+            components = _row_to_components(row)
+            if components:
+                ins, upd, unch = upsert_components(
+                    client=client,
+                    budget_event_id=event_id,
+                    components=components,
+                )
+                n_components_inserted += ins
+                n_components_updated += upd
+                n_components_unchanged += unch
+
         print(
             f"  inserted/changed={run.records_changed}/{run.records_extracted}; "
             f"unmatched TX district numbers: {len(no_match)}"
+        )
+        print(
+            f"  components: inserted={n_components_inserted} "
+            f"updated={n_components_updated} unchanged={n_components_unchanged}"
         )
         if no_match[:5]:
             print(f"  sample unmatched: {no_match[:10]}")
@@ -214,6 +405,8 @@ def extract(*, fiscal_year: int = 2025, triggered_by: str = "manual") -> dict:
         "fiscal_year": fiscal_year,
         "records_extracted": run.records_extracted,
         "records_changed": run.records_changed,
+        "components_inserted": n_components_inserted,
+        "components_updated": n_components_updated,
         "no_match": no_match,
     }
 

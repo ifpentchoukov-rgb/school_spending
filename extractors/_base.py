@@ -260,3 +260,126 @@ def get_prior_year_baseline(
     if prior.data:
         return float(prior.data[0]["topline_amount"])
     return None
+
+
+# ──────────────────────────────────────────────────────────────────────
+# Phase 7.4: budget_event_components helpers
+# ──────────────────────────────────────────────────────────────────────
+
+
+# The 14 canonical categories from the expenditure_category enum
+# (migration 0010). Source of truth is the DB enum; this constant gives
+# extractors compile-time safety against typos.
+CANONICAL_CATEGORIES: frozenset[str] = frozenset({
+    "instruction",
+    "support_services_student",
+    "support_services_instruction",
+    "administration",
+    "operations_maintenance",
+    "transportation",
+    "food_service",
+    "employee_benefits",
+    "capital_outlay",
+    "debt_service",
+    "revenue_federal",
+    "revenue_state",
+    "revenue_local",
+    "other",
+})
+
+
+@dataclass
+class ComponentInput:
+    """One line-item breakdown row for a budget_event.
+
+    Components describe a subset (or related-but-disjoint dataset) of
+    the parent topline. They don't have to sum to the topline — they're
+    just labeled sub-aggregates pulled from the same source. Extractors
+    decide what's emit-worthy based on the source's level of detail.
+    """
+    category: str           # must be one of CANONICAL_CATEGORIES
+    amount: float
+    definition: str | None = None
+    line_or_cell_reference: str | None = None
+
+    def __post_init__(self) -> None:
+        if self.category not in CANONICAL_CATEGORIES:
+            raise ValueError(
+                f"Unknown category '{self.category}'. "
+                f"Must be one of {sorted(CANONICAL_CATEGORIES)}."
+            )
+
+
+def upsert_components(
+    *,
+    client: Client,
+    budget_event_id: str,
+    components: list[ComponentInput],
+) -> tuple[int, int, int]:
+    """Idempotently sync `budget_event_components` rows for a budget_event.
+
+    Returns (n_inserted, n_updated, n_unchanged). Component rows are
+    keyed on (budget_event_id, category) — re-running with identical
+    data is a no-op.
+
+    The component table doesn't supersede on update; we just overwrite
+    in place. Audit trail of changes lives in extraction_runs +
+    supabase_audit (if enabled later) — components are derived data.
+
+    A component for a category we previously emitted but no longer
+    have (i.e. the new run dropped it) is NOT auto-deleted. Cleaning up
+    stale categories is an explicit operation; in practice extractors
+    emit the same set of categories run-over-run so this matters rarely.
+    """
+    if not components:
+        return (0, 0, 0)
+
+    existing_rows = (
+        client.table("budget_event_components")
+        .select("category, amount, definition, line_or_cell_reference")
+        .eq("budget_event_id", budget_event_id)
+        .execute()
+    ).data or []
+    existing: dict[str, dict] = {r["category"]: r for r in existing_rows}
+
+    to_insert: list[dict] = []
+    to_update: list[tuple[str, dict]] = []
+    n_unchanged = 0
+
+    for c in components:
+        payload = {
+            "amount": float(c.amount),
+            "definition": c.definition,
+            "line_or_cell_reference": c.line_or_cell_reference,
+        }
+        prior = existing.get(c.category)
+        if prior is None:
+            to_insert.append(
+                {
+                    "budget_event_id": budget_event_id,
+                    "category": c.category,
+                    **payload,
+                }
+            )
+        else:
+            if (
+                float(prior["amount"]) == payload["amount"]
+                and prior.get("definition") == payload["definition"]
+                and prior.get("line_or_cell_reference") == payload["line_or_cell_reference"]
+            ):
+                n_unchanged += 1
+            else:
+                to_update.append((c.category, payload))
+
+    if to_insert:
+        client.table("budget_event_components").insert(to_insert).execute()
+    for category, payload in to_update:
+        (
+            client.table("budget_event_components")
+            .update(payload)
+            .eq("budget_event_id", budget_event_id)
+            .eq("category", category)
+            .execute()
+        )
+
+    return (len(to_insert), len(to_update), n_unchanged)
