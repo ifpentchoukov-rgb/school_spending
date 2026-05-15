@@ -4,6 +4,8 @@ _Last updated: 2026-05-15_
 
 **Coverage:** 45 states (+ DC) live, 43.7M / 44.8M K-12 students = **97.6% of US enrollment**. NY landed 2026-05-15 (the prior "no bulk feed" deferral was wrong — NYSED publishes ST-3 at a stable URL after all).
 
+**Project direction (2026-05-15):** PLAN.md §1 reframed from "FY27 national rollup" to "comprehensive national portal for US K-12 budgets" — see PLAN.md §1 and new Phase 7–11 work groups in §6. FY27 rollup remains a featured deliverable (now Phase 11).
+
 **Every US state + DC has now been investigated.** 6 are deferred for various source-side blockers (interactive portals, captchas, JS-only dashboards, lagging publication).
 
 This file is the running snapshot of which states are live, which are deferred, and what's next. Update it whenever an extractor lands, a state is deferred, or a follow-up is closed.
@@ -124,6 +126,28 @@ Per the May 2026 systematic deadline-order investigation: NC, TN, ID, SD (Jul de
 - **Annual `KNOWN_FILE_URLS` refresh** — IN/WI/MD/SC/AL/LA/IA/MS/HI/ID/SD/ND/VT/DC/MT all need annual URL bumps
 - **AL FY24 PDF** — refresh when ALSDE publishes
 - **DC charters not in master** — 63 charter LEAs in OSSE file but not in master operating-LEA set
+
+## Tiered standardization coverage (Phase 7)
+
+Cross-state comparability depends on how rich the source data is. The portal will surface a `coverage_tier` badge per state so users know what's apples-to-apples vs apples-to-oranges.
+
+**rich** (function/object detail extractable; can emit ≥8 canonical line-item categories from Phase 7's `expenditure_category` enum):
+- TX (PEIMS Object × Function grid)
+- MI (5 funds × all expenditure objects in Bulletin 1011)
+- IL (ISBE OEPP function detail)
+- PA (GFB FB_Cert function rows)
+- KY (Function 1000-3900 columns)
+- WI (7 per-FY cost columns: instruct + support + admin + operations + trans + facility + food)
+- KS (BAG page-4 category rows)
+- NY (ST-3 SAMS — 4,200+ line items via Legacy/RefKey columns; AT1XXX = Instruction, AT9098 = Employee Benefits, AT9898 = Debt Service, HT9999 = Capital, FT9999 = Federal/Special Aid)
+
+**moderate** (fund-level or summary categories; can emit 2-5 canonical categories):
+OH, CO, IA, AR, OK, OR, WA, NJ, IN, MA, VA, GA, MO, MN, NE, TN, AZ, MS, ID, SD, ND, MT, UT, LA, FL, CA.
+
+**thin** (single topline only, often per-pupil reconstructed — Phase 7 will flag with `no_breakdown_available=true`):
+AL, VT, NH, HI, ME, MD, SC, NC, DC, CT, WV.
+
+This classification is the seed for Phase 7.3's `state_extractor_metadata` migration. It will be revisited as we extract more line items from each state — some moderate-tier states may move to rich once we parse their function-code grids more aggressively (e.g. CA SACS has all the detail we need but our current extractor only reads the topline).
 
 ## Reattack candidates (deferred but data quality is high once unblocked)
 

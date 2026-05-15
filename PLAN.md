@@ -8,19 +8,23 @@ If anything in this document is wrong, fix the document first, then the code. Do
 
 ## 1. What this system does
 
-For every operating public school district in the United States (~12,000 districts), the system tracks the **adopted operating budget for fiscal year 2027** (school year 2026-27 in most states; September 2026 – August 2027 in TX/AL).
+This is a **comprehensive national portal for US K-12 school district budgets** — adopted budgets, actual expenditures, and per-pupil metrics for ~12,000 operating school districts. The portal serves two audiences with a single dataset:
+
+- **Public-facing** — parents, journalists, citizens, school-board members. Search, browse, compare. No login required.
+- **Researcher-gated** — academic and civic-tech researchers get bulk JSON/CSV API access, peer-grouping tools, and full methodology disclosure behind a `researcher_allowlist` invite gate.
 
 For each district, we maintain:
 
-- The **proposed**, **tentative**, **adopted**, or **disapproved** status of the FY27 budget
-- The **topline expenditure amount** at each status stage
-- The **year-over-year change** vs the FY26 prior year baseline
-- A **link to the source document** that proves the status (URL, PDF page, board minutes line item, etc.)
-- A **verification record** (which human checked it, when, and what they confirmed)
+- **Topline expenditure** per fiscal year and status (`proposed` | `tentative` | `adopted` | `disapproved` | `actual`).
+- **Standardized line-item breakdowns** where source data permits — instruction, transportation, debt service, employee benefits, capital outlay, etc. — with explicit per-state **coverage-tier disclosure** (rich / moderate / thin) so cross-state comparisons stay honest.
+- **Year-over-year change** vs prior baselines.
+- **Full provenance** — every value links to a `source_documents` row with the original PDF/Excel/CSV in Supabase Storage, content-hashed for tamper detection, plus the exact page/cell reference.
+- **Cooperative attribution** — NY BOCES, NJ Educational Services Commissions, RI/CT regional districts have their own entity_type and their spend is allocated back to member districts for per-pupil rollups.
+- **Verification audit trail** — human verifiers mark records `verified` / `flagged` / `disputed`; the log is append-only.
 
-Data updates daily via scheduled extractors. Humans verify a sample of records before they are marked authoritative.
+Data updates daily via scheduled extractors (GitHub Actions cron); the web portal auto-revalidates within ~10s of new data landing via Supabase webhooks.
 
-The eventual published artifact is a national rollup: how many districts increased spending, how many decreased, by how much, with full provenance.
+**Featured deliverable: FY27 national rollup.** How many districts increased vs decreased spending for school year 2026-27, by how much, with full provenance. This was the project's original goal and remains a flagship output (see §11), but it is now one of many surfaces the portal supports.
 
 ---
 
@@ -39,12 +43,16 @@ The extractor pattern from Step 2 is good and should be preserved. The Step 2 ou
 
 ## 3. Architecture (decided — do not relitigate without explicit user sign-off)
 
-- **Code:** Claude Code working in a Git repo (this repo). All code in version control. PRs for non-trivial changes.
+- **Code:** Two Git repos. (1) Python extraction + runner in this repo (`ifpentchoukov-rgb/school_spending`). (2) Next.js 16 portal + researcher API in `ifpentchoukov-rgb/school_spending_web` (sister repo). All code in version control. PRs for non-trivial changes.
 - **Data:** Supabase Postgres. All authoritative data lives here, not in CSVs. Use the Supabase MCP for schema migrations and data writes; do not hand-write SQL connection strings.
 - **Scheduling:** GitHub Actions cron jobs. No external scheduler.
 - **Storage of source documents:** Supabase Storage buckets, one bucket per state. Original PDFs/Excel files preserved with content hash.
-- **Human verification UI:** Supabase Studio (the table editor). No custom frontend in v1.
-- **Secrets:** GitHub Actions secrets for CI; `.env.local` for local development (never committed).
+- **Public portal:** Next.js 16 App Router on Vercel — currently https://school-spending-web.vercel.app, planned `schoolspending.app`. Reads Supabase via `@supabase/ssr` with the anon key + RLS. Auto-revalidates via Supabase database webhooks → `/api/revalidate`.
+- **Researcher API:** same Next.js app, route handlers under `/api/v1/*`. Gated by long-lived JWTs issued from the `researcher_allowlist` table; anonymous tier with stricter rate limits.
+- **Verification UI:** `/admin/verify/[event_id]` on the portal (Phase B). Supabase Studio still works as a fallback.
+- **Auth:** Supabase magic-link sign-in. The `custom_access_token_hook` Postgres function (migration 0009) reads `researcher_allowlist` on JWT mint and sets `app_metadata.role='researcher'`; middleware on the portal gates `/admin/*` on that role.
+- **Standardization layer:** `budget_event_components` table (§7) holds canonical category breakdowns; `entity_type` enum on `districts` + `cooperative_membership` table (§8) capture BOCES-style arrangements.
+- **Secrets:** GitHub Actions secrets for CI; `.env.local` for local development (never committed); Vercel env vars for the portal/API runtime.
 
 If a non-obvious tradeoff comes up that pushes against any of these decisions, raise it with the user before changing course.
 
@@ -143,6 +151,22 @@ Key columns:
 - `previous_status`, `new_status` (text)
 - `notes` (text)
 - `created_at` (timestamptz)
+
+### Standardization tables (added in §7 + §8)
+
+**`budget_event_components`** (migration 0010) — line-item breakdown of a `budget_events` topline into canonical categories. Many-to-one with `budget_events`; categories from the `expenditure_category` enum (`instruction` | `support_services_student` | `support_services_instruction` | `administration` | `operations_maintenance` | `transportation` | `food_service` | `employee_benefits` | `capital_outlay` | `debt_service` | `revenue_federal` | `revenue_state` | `revenue_local` | `other`). Unique on `(budget_event_id, category)`. Populated by extractors at extraction time; rich-tier states emit ≥8 components per event, moderate-tier ≥2 (debt + capital), thin-tier omit.
+
+**`cooperative_membership`** (migration 0011) — when a `district` row has `entity_type='cooperative'` (BOCES, NJ ESC, RI/CT regional), this table allocates its spend back to member districts. Columns: `cooperative_leaid`, `member_leaid`, `fiscal_year`, `allocation_share` (0..1), `allocation_basis` (`'enrollment_weighted'` | `'fees_paid'` | `'unknown'`).
+
+### Entity-type column on `districts`
+
+Added in migration 0011: `entity_type text NOT NULL DEFAULT 'district' CHECK (entity_type IN ('district', 'cooperative', 'charter'))`. Existing rows default to `'district'`. Cooperatives and charters get real values from their respective extractors.
+
+### Computed views (added in §7 + §11)
+
+- `v_per_pupil_metrics` — joins `budget_events`, `districts`, and `budget_event_components` to expose topline_per_pupil, instruction_per_pupil, debt_service_per_pupil, etc. for every non-superseded event.
+- `v_district_full_spend` — district's own topline + allocated share of any cooperatives it belongs to (the "true" per-pupil denominator).
+- `v_fy27_rollup` — per-district FY26 baseline vs FY27 adopted, percent + dollar change, category-level deltas where available.
 
 ### Row-level security
 
@@ -355,16 +379,19 @@ Sister repo at [`ifpentchoukov-rgb/school_spending_web`](https://github.com/ifpe
 
 ### Phase 6 — Add new state extractors (ongoing)
 
-In priority order based on enrollment coverage and tier:
+**State of play (2026-05-15):** 45 + DC live, 97.6% K-12 enrollment. NY landed today via NYSED ST-3 SAMS XLSX (642 LEAs, $45.3B General Fund, non-NYC). 6 deferred (NV, NM, AK, RI, DE, WY, ~1.7M enrollment combined). Detailed per-state notes follow.
 
-1. NY (1,119 LEAs but ~690 operating; NYSED ST-3 + Comptroller data)
-2. IL (1,032 LEAs; ISBE Annual Financial Report)
-3. PA (~545 districts; PDE AFR)
-4. OH (~646 districts; ODE District Profile + Auditor of State)
-5. NJ (~700 LEAs; NJDOE Taxpayers Guide + UEZ)
-6. ... continue per the tier table in `legacy/sd_tracker_step1/state_tiers.py`
+The original priority list (NY, IL, PA, OH, NJ) is fully consumed. The remaining work in §6 is:
 
-For each new state extractor, follow the **"adding a state" template" in §7.
+1. **Reattack deferred** (NV, NM, AK, RI, DE, WY) — different technique each; see STATUS.md.
+2. **Charter LEA extractors** — separate filing schemes per state (NY ST-3D, others vary); biggest is NY's ~360 charters and NYC's ~280.
+3. **NYC DOE** (~$36B) — NYC files separately from the 32 NYC Geographic Districts in our master; needs a NYC Comptroller CAFR or NYC DOE Annual Report extractor. Treated as a §6 follow-up rather than a deferred state since NY itself is live.
+4. **Per-state data-quality gaps** documented in [docs/STATUS.md](docs/STATUS.md) — NC LGC all-funds (only 58.7% captured), UT charters, VA joint divisions, etc.
+5. **Annual `KNOWN_FILE_URLS` refresh** — handled by the monthly probe (`scripts/probe_new_files.py`) plus manual bumps when probe surfaces hits.
+
+For each new state extractor, follow the **"adding a state" template** in the Conventions section.
+
+§6 also continues to host the new work groups Phase 7–Phase 11 below (Standardization, Cooperatives, Public portal v2, Researcher API, FY27 rollup). They're "Phases" in the same sense as Phase 0–6 — each has explicit acceptance criteria and is sequenced.
 
 #### NY scoping notes (2026-05-05)
 
@@ -1099,6 +1126,78 @@ NY was the biggest deferred state at 2.36M enrollment and the prior deferral not
 - NYC DOE (~$36B operating spend) — sibling extractor against NYC DOE Annual Report or NYC Comptroller CAFR. Closing this brings NY count coverage 87% → ~100%.
 - All-funds — extend or sibling: also sum FT9999.0 (Special Aid), HT9999.0 (Capital), VT9999.0 (Debt Service) per district.
 - ST-3D for charters — separate file from NYSED for charter LEA financials.
+
+### Phase 7 — Standardization layer (data model + extractor extensions)
+
+**Goal:** decompose `topline_amount` into comparable line items so cross-state queries can ask "what's median per-pupil debt service?" or "show me districts where instruction is < 50% of operating." Tiered approach: universal floor every state can hit + rich-data depth where source allows.
+
+- [ ] **7.1 — Canonical category taxonomy + `expenditure_category` enum** (migration 0010 part 1). Categories: `instruction`, `support_services_student`, `support_services_instruction`, `administration`, `operations_maintenance`, `transportation`, `food_service`, `employee_benefits`, `capital_outlay`, `debt_service`, `revenue_federal`, `revenue_state`, `revenue_local`, `other`.
+- [ ] **7.2 — `budget_event_components` table** (migration 0010 part 2). FK to `budget_events(id)` with ON DELETE CASCADE; UNIQUE `(budget_event_id, category)`. Anonymous read of non-superseded events; service role writes. Mirrors `budget_events` RLS.
+- [ ] **7.3 — Coverage tiers per state** (migration 0010 part 3). New `state_extractor_metadata` table with `coverage_tier text CHECK (coverage_tier IN ('rich', 'moderate', 'thin'))`. Initial classification per the survey in [docs/STATUS.md](docs/STATUS.md):
+    - **rich** (object/function detail extractable): TX, MI, IL, PA, KY, WI, KS, NY.
+    - **moderate** (fund-level or summary categories): OH, CO, IA, AR, OK, OR, WA, NJ, IN, MA, VA, GA, MO, MN, NE, TN, AZ, MS, ID, SD, ND, MT, UT, LA, FL, CA.
+    - **thin** (single topline or per-pupil reconstructed): AL, VT, NH, HI, ME, MD, SC, NC, DC, CT, WV.
+- [ ] **7.4 — Extractor extensions, rich-tier states first.** Each module's `parse_*` function adds a `components: list[ComponentInput]` field alongside the existing topline emission. Idempotent per `(budget_event_id, category)`. Order: TX → MI → NY → IL → PA → KY → WI → KS.
+- [ ] **7.5 — Universal floor pass.** For moderate-tier states whose source includes debt service + capital outlay as separable lines, emit those two categories at minimum. Goal: every district with a `budget_events` row also has ≥2 `budget_event_components` rows (or an explicit `no_breakdown_available=true` marker).
+- [ ] **7.6 — `v_per_pupil_metrics` view.** Joins `budget_events`, `districts`, `budget_event_components` to expose `topline_per_pupil`, plus per-category per-pupil columns. Used by §9 rankings and §10 API.
+
+**Acceptance:** rich-tier states emit ≥8 components per non-superseded event; moderate-tier emit ≥2; thin-tier flagged. `v_per_pupil_metrics` returns a row for every non-superseded budget_event with a positive enrollment_fy25.
+
+### Phase 8 — Cooperative entities (BOCES, ESCs, regional districts)
+
+**Goal:** capture spend that today is invisible — NY BOCES (~$3B aggregate), NJ Educational Services Commissions, RI/CT regional district overhead — and allocate it back to member districts for honest per-pupil rollups.
+
+- [ ] **8.1 — Schema** (migration 0011). `ALTER TABLE districts ADD COLUMN entity_type text NOT NULL DEFAULT 'district' CHECK (entity_type IN ('district', 'cooperative', 'charter'))`. New `cooperative_membership(cooperative_leaid, member_leaid, fiscal_year, allocation_share, allocation_basis)` with composite PK.
+- [ ] **8.2 — NY BOCES extractor** (`extractors/ny_boces.py`). 37 BOCES file their own ST-3s in the same SAMS XLSX our `extractors/ny.py` already downloads — different BEDS-prefix range. Pull them as `entity_type='cooperative'`. Allocation comes from BOCES "Schedule K" expenditures distributed to component districts (same ST-3).
+- [ ] **8.3 — NJ ESC, RI regional, CT regional extractors.** Same pattern; smaller scale. NJ ~7 ESCs, RI ~3 regional, CT ~17 regional.
+- [ ] **8.4 — `v_district_full_spend` view.** District's own topline + allocated share of any cooperatives it belongs to in the same fiscal year.
+
+**Acceptance:** NY districts that belong to a BOCES show non-zero `allocated_cooperative_spend` in `v_district_full_spend`; spot-checks against published BOCES annual reports match within ±2%.
+
+### Phase 9 — Public portal v2
+
+**Goal:** make https://school-spending-web.vercel.app usable for parents, journalists, citizens — search, compare, peer cohorts, time-series, mobile-friendly, accessible. Builds on Phase B (already shipped).
+
+Critical files in `/Users/ivanpentchoukov/Projects/school_spending_web/`. Reuse `components/topline-card.tsx`, `lib/supabase/server.ts`, and the inline SVG chart pattern in `app/states/[postal]/[leaid]/page.tsx`.
+
+- [ ] **9.1 — Search & filter UX.** Sticky header with district name + state autocomplete. New `/search?q=` route. Filter chips: state, enrollment band, fiscal year, status, verification.
+- [ ] **9.2 — Rankings.** `/rankings` route — sort districts nationally by `topline_per_pupil`, `instruction_per_pupil`, `debt_service_per_pupil`, growth %, etc. Filter by state, enrollment band. Coverage tier badge surfaced prominently.
+- [ ] **9.3 — Compare side-by-side.** `/compare?leaids=A,B,C` — up to 4 LEAs in columns; rows are the canonical categories from Phase 7. Time-series sparkline per category. CSV download.
+- [ ] **9.4 — Per-LEA enrichment.** Extend `app/states/[postal]/[leaid]/page.tsx`: category breakdown table (rows = §7 categories × cols = recent FYs); coverage tier badge; peer cohort builder (enrollment / region / type filters); per-state-methodology disclosure link; cooperative attribution.
+- [ ] **9.5 — Mobile + accessibility.** ToplineCards stack <768px; LEA tables become card lists; SVG charts horizontally scroll; WCAG AA color contrast audit.
+- [ ] **9.6 — Public CSV downloads.** Per-state, per-cohort, per-comparison. Edge rate-limited (per-IP middleware or Vercel KV).
+
+**Acceptance:** a non-technical user can (a) find their district by name, (b) see how it compares to 5 peers and the state median, (c) download the comparison as CSV, (d) do all of this on a phone.
+
+### Phase 10 — Researcher API & bulk export
+
+**Goal:** academic researchers, journalists, civic-tech folks pull our data programmatically without scraping the site. Anonymous tier with rate limits; researcher tier with elevated limits behind the existing `researcher_allowlist` gate.
+
+- [ ] **10.1 — REST API surface.** New route handlers under `school_spending_web/app/api/v1/`:
+    - `GET /api/v1/districts` — paginated; filter by state, enrollment range, entity_type.
+    - `GET /api/v1/districts/{leaid}` — single district + all events.
+    - `GET /api/v1/budget-events` — paginated; filter by state, fiscal_year, status, verification.
+    - `GET /api/v1/budget-event-components` — paginated; filter by category, state.
+    - `GET /api/v1/states/{postal}/coverage` — state-level coverage stats + tier.
+    - `GET /api/v1/cohorts/{cohort_id}` — pre-defined peer groups.
+
+    JSON-first. Every response includes a `_meta` block with pagination, total_count, and coverage caveats (per-state tier, NYC-DOE-not-in-NY-rollup, NC-state-funded-only, etc.).
+- [ ] **10.2 — API auth + rate limits.** Anonymous: 60 req/min, page size cap. Researcher: 600 req/min, full page sizes, issued as long-lived JWT signed with a dedicated secret. Admin: unlimited. New `/admin/api-keys` page for issuing/revoking researcher keys.
+- [ ] **10.3 — Bulk export endpoints.** `GET /api/v1/exports/budget-events.csv?fiscal_year=2024`; analogous for components and districts. On-demand generation; Vercel KV cache invalidated by the existing `revalidate-budget-events` Supabase webhook.
+- [ ] **10.4 — Methodology depth.** Per-state `/methodology/[postal]` pages with topline definition verbatim, coverage tier explanation, source URL + last-fetched timestamp, known caveats, citation suggestion.
+
+**Acceptance:** a researcher can `curl https://schoolspending.app/api/v1/budget-events?state=TX&fiscal_year=2024` and get paginated JSON with full provenance. Allowlisted researcher can pull the bulk CSV. Anonymous user hits the rate limit at 60 req/min.
+
+### Phase 11 — National FY27 rollup (subsidiary deliverable)
+
+**Goal:** reframe the project's original §1 goal as a featured deliverable depending on Phase 7 + Phase 8.
+
+- [ ] **11.1 — Collect FY27 adopted budgets.** Already in motion via state_calendars + 10 adopted-budget pipelines. NJ deadline 2026-05-15; NY referenda passed; most states adopt by June 30.
+- [ ] **11.2 — `v_fy27_rollup` view.** Per-district FY26 baseline vs FY27 adopted, percent + dollar change, category-level deltas where §7 components exist.
+- [ ] **11.3 — Published artifact at `/reports/fy27`.** National totals, state-level breakdowns, distribution chart (increased vs decreased), top-10 movers, methodology + caveats. Static prerender; revalidates on the `budget_events` webhook.
+- [ ] **11.4 — Press kit.** Downloadable methodology PDF, key figures CSV, top-10 movers per state. Published ~Sept 2026 once most FY27 adopted budgets are in.
+
+**Acceptance:** `/reports/fy27` renders with N districts captured, X% increased / Y% decreased, $Z net change vs FY26 baseline; readable methodology section explains coverage gaps (NYC, charters, deferred states).
 
 ---
 
