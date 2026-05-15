@@ -1215,20 +1215,42 @@ Critical files in `/Users/ivanpentchoukov/Projects/school_spending_web/`. Reuse 
 
 **Goal:** academic researchers, journalists, civic-tech folks pull our data programmatically without scraping the site. Anonymous tier with rate limits; researcher tier with elevated limits behind the existing `researcher_allowlist` gate.
 
-- [ ] **10.1 — REST API surface.** New route handlers under `school_spending_web/app/api/v1/`:
-    - `GET /api/v1/districts` — paginated; filter by state, enrollment range, entity_type.
-    - `GET /api/v1/districts/{leaid}` — single district + all events.
-    - `GET /api/v1/budget-events` — paginated; filter by state, fiscal_year, status, verification.
-    - `GET /api/v1/budget-event-components` — paginated; filter by category, state.
-    - `GET /api/v1/states/{postal}/coverage` — state-level coverage stats + tier.
-    - `GET /api/v1/cohorts/{cohort_id}` — pre-defined peer groups.
+- [x] **10.1 — REST API surface** (web commit `1e0efd8`, 2026-05-15). Routes under `school_spending_web/app/api/v1/`:
+    - `GET /api/v1` — JSON manifest of endpoints + auth tiers + canonical_categories + response envelope.
+    - `GET /api/v1/districts` — paginated; filter `state`, `entity_type`, `min_enrollment`, `max_enrollment`.
+    - `GET /api/v1/districts/{leaid}` — single district + every non-superseded event with its source document + components.
+    - `GET /api/v1/budget-events` — paginated; filter `state`, `leaid`, `fiscal_year`, `status`, `verification_status`, `include_superseded`.
+    - `GET /api/v1/budget-event-components` — paginated; filter `category`, `state`, `fiscal_year`. Cross-state filter joins via PostgREST `budget_events!inner(... districts!inner(state_postal))` embed to keep the URL short (a 1000+-event IN-list would burst PostgREST's URL cap).
+    - `GET /api/v1/states/{postal}/coverage` — coverage rollup from `v_state_fy_coverage` + `state_extractor_metadata` tier classification.
+    - `cohorts/{cohort_id}` — deferred until cohort taxonomy is defined (currently the closest analog is `/rankings?state=&band=&metric=`).
 
-    JSON-first. Every response includes a `_meta` block with pagination, total_count, and coverage caveats (per-state tier, NYC-DOE-not-in-NY-rollup, NC-state-funded-only, etc.).
-- [ ] **10.2 — API auth + rate limits.** Anonymous: 60 req/min, page size cap. Researcher: 600 req/min, full page sizes, issued as long-lived JWT signed with a dedicated secret. Admin: unlimited. New `/admin/api-keys` page for issuing/revoking researcher keys.
-- [ ] **10.3 — Bulk export endpoints.** `GET /api/v1/exports/budget-events.csv?fiscal_year=2024`; analogous for components and districts. On-demand generation; Vercel KV cache invalidated by the existing `revalidate-budget-events` Supabase webhook.
-- [ ] **10.4 — Methodology depth.** Per-state `/methodology/[postal]` pages with topline definition verbatim, coverage tier explanation, source URL + last-fetched timestamp, known caveats, citation suggestion.
+    All responses share `{ data: [...], _meta: { page, page_size, total, has_next, coverage_caveats } }`. Errors return `{ error: { code, message } }`. Universal caveats (NYC-DOE-not-in-NY, NC-state-funded-only, charter coverage gap, 97.6% national enrollment) come from `lib/api/response.ts::UNIVERSAL_CAVEATS`; endpoint-specific caveats append on top.
+- [~] **10.2 — API auth + rate limits** (partial, web commit `1e0efd8`). `lib/api/tier.ts` reads `Authorization: Bearer <supabase_jwt>`, calls `auth.getUser`, and resolves the tier:
+    - **anonymous** (no/invalid token) — 60 rpm target, 500 max page size.
+    - **researcher** (email in `researcher_allowlist`, not revoked) — 600 rpm target, 5000 max page size.
+    - **admin** (`app_metadata.role = 'admin'` via custom_access_token_hook) — unlimited.
 
-**Acceptance:** a researcher can `curl https://schoolspending.app/api/v1/budget-events?state=TX&fiscal_year=2024` and get paginated JSON with full provenance. Allowlisted researcher can pull the bulk CSV. Anonymous user hits the rate limit at 60 req/min.
+    Every response carries `X-RateLimit-Tier`, `X-RateLimit-RPM-Limit`, `X-RateLimit-MaxPageSize` headers; page-size caps are enforced today. **Hard rate-limit enforcement deferred** until Vercel KV / Upstash Redis is wired up (per-IP for anonymous, per-token for researcher). `/admin/api-keys` page for issuing/revoking long-lived researcher JWTs also deferred — for v1, researchers authenticate with their existing Supabase session token.
+- [x] **10.3 — Bulk export endpoints** (web commit `1e0efd8`). Three CSV routes returning `text/csv` with `Content-Disposition: attachment` and a 1-hour edge cache:
+    - `GET /api/v1/exports/budget-events.csv?fiscal_year=YYYY&state=&status=` — 50k-row hard cap.
+    - `GET /api/v1/exports/budget-event-components.csv?fiscal_year=YYYY&state=&category=` — 100k-row hard cap, paginated through PostgREST range internally to bypass the default 1000-row select limit.
+    - `GET /api/v1/exports/districts.csv` — full 11,880-row operating-district universe.
+
+    Existing public-facing CSVs from Phase 9 (`/api/compare/csv`, `/api/exports/state/{postal}/csv`, `/api/exports/rankings/csv`) remain in place — they target page-driven workflows, while `/api/v1/exports/*` target programmatic researcher pulls.
+
+    Vercel KV cache invalidation tied to the existing `revalidate-budget-events` webhook is deferred — the 1-hour `Cache-Control` is the v1 staleness budget.
+- [x] **10.4 — Methodology depth** (web commit `1e0efd8`). `/methodology/[postal]` routes:
+    - Coverage tier badge (rich/moderate/thin/deferred) with `tier_rationale` tooltip.
+    - Operating-district count, latest FY actuals (LEA count + total $), latest FY adopted same.
+    - Coverage tier rationale callout block.
+    - Full extractor card stack — publisher, document type, source portal URL, topline definition verbatim — sourced from `extractor-docs.json` (auto-generated from extractor docstrings).
+    - Per-(fy, status) coverage rollup table.
+    - Citation suggestion block.
+    - Programmatic-access section with the exact `/api/v1/*` URLs scoped to that state.
+
+    Per-LEA "What does this mean?" link now points to `/methodology/[postal]` rather than the global page. Per-state "Last fetched" timestamp deferred — would require joining latest `source_documents.fetched_at` per state, and the source-document table doesn't yet have a state lookup that's faster than per-event aggregation.
+
+**Acceptance status:** ✓ Anonymous `curl /api/v1/budget-events?state=TX&fiscal_year=2024` returns paginated JSON with provenance and an `X-RateLimit-Tier: anonymous` header. ✓ Allowlisted researcher pulling `/api/v1/exports/budget-events.csv?fiscal_year=2024` gets the 50k-cap CSV. ✗ Hard "anonymous user hits 60 rpm" enforcement awaits Vercel KV.
 
 ### Phase 11 — National FY27 rollup (subsidiary deliverable)
 
