@@ -50,11 +50,13 @@ from supabase import Client
 
 from extractors._base import (
     BudgetEventInput,
+    ComponentInput,
     Run,
     fetch_all,
     sha256_bytes,
     upload_source_document,
     upsert_budget_event_with_supersession,
+    upsert_components,
     upsert_source_document_row,
 )
 
@@ -92,8 +94,42 @@ def download(url: str) -> bytes:
         return resp.read()
 
 
+# Phase 7.5 — LA AFSR Item 9 Category code → canonical category.
+# Codes per LDOE chart of accounts (E11-E18 = Instruction subtotals,
+# E31 = Food Services, E41 = Facility Acquisition, E51 = Debt Service).
+# Subcategory=TOT for all rows. E2A-E2K subcategories are deliberately
+# left unmapped — their precise NCES correspondence isn't documented
+# clearly enough to assign confidently; sticking to safe mappings.
+LA_CATEGORY_CODES: dict[str, tuple[list[str], str]] = {
+    "instruction": (
+        ["E11", "E12", "E13", "E14", "E15", "E16", "E17", "E18"],
+        "LDOE AFSR Item 9: sum Current_Expenditure where Category in E11-E18 "
+        "(Instruction subtotals — Regular, Special, Vocational, Other Programs)",
+    ),
+    "food_service": (
+        ["E31"],
+        "LDOE AFSR Item 9: Category E31 (Food Services), Current_Expenditure",
+    ),
+    "capital_outlay": (
+        ["E41"],
+        "LDOE AFSR Item 9: Category E41 (Facility Acquisition & Construction), "
+        "Total_Expenditure (Current_Expenditure excludes capital)",
+    ),
+    "debt_service": (
+        ["E51"],
+        "LDOE AFSR Item 9: Category E51 (Debt Service), Total_Expenditure "
+        "(Current_Expenditure excludes debt)",
+    ),
+}
+
+
 def parse_afsr_item9(zip_bytes: bytes) -> list[dict]:
-    """Return [{code, total_op_exp}] from AFSR Item 9 EXP per parish."""
+    """Return [{code, total_op_exp, components}] from AFSR Item 9 EXP.
+
+    Topline = Current_Expenditure at (E52, TOT). Components come from
+    per-Category rows: E11-E18 sum → instruction, E31 → food_service,
+    E41 → capital_outlay (Total_Expenditure), E51 → debt_service.
+    """
     zf = zipfile.ZipFile(io.BytesIO(zip_bytes))
     target = next(
         (n for n in zf.namelist() if "item9" in n.lower() and "exp" in n.lower()
@@ -107,16 +143,48 @@ def parse_afsr_item9(zip_bytes: bytes) -> list[dict]:
     xlsx_bytes = zf.read(target)
     wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes), data_only=True)
     ws = wb["item9"]
-    rows = ws.iter_rows(values_only=True)
-    header = next(rows)
+    all_rows = list(ws.iter_rows(values_only=True))
+    header = all_rows[0]
     expected = (
         "Sponsorcd", "Sponsorname", "Subcategory", "Category", "Expenditure",
         "Total_Expenditure",
     )
     if header[:6] != expected:
         raise RuntimeError(f"Unexpected AFSR Item 9 header: {header[:6]}")
+    # Header col 7 should be Current_Expenditure
+    # Build per-(code, category) component lookup first
+    components_by_code: dict[str, dict[str, float]] = {}
+    code_to_canonical: dict[str, str] = {}
+    for canonical, (codes, _def) in LA_CATEGORY_CODES.items():
+        for code in codes:
+            code_to_canonical[code] = canonical
+    for r in all_rows[1:]:
+        if not r or r[0] is None:
+            continue
+        if r[2] != "TOT":
+            continue
+        cat_code = r[3]
+        if cat_code not in code_to_canonical:
+            continue
+        canonical = code_to_canonical[cat_code]
+        # Use Total_Expenditure (col 6) for capital + debt (excluded from
+        # Current); Current_Expenditure (col 7) for instruction + food.
+        if canonical in ("capital_outlay", "debt_service"):
+            amt = r[6]
+        else:
+            amt = r[7]
+        if amt is None:
+            continue
+        try:
+            v = float(amt)
+        except (TypeError, ValueError):
+            continue
+        sponsorcd = str(r[0]).strip()
+        components_by_code.setdefault(sponsorcd, {}).setdefault(canonical, 0.0)
+        components_by_code[sponsorcd][canonical] += v
+
     out: list[dict] = []
-    for r in rows:
+    for r in all_rows[1:]:
         if not r or r[0] is None:
             continue
         # Only accept the grand-total row (Category=E52, Subcategory=TOT).
@@ -137,7 +205,11 @@ def parse_afsr_item9(zip_bytes: bytes) -> list[dict]:
         # '3-Labs', '4-Type 2', '5-RSD', '6-OJJ', etc.
         if not code or "-" in code or code.upper() == "LA":
             continue
-        out.append({"code": code, "total_op_exp": v})
+        out.append({
+            "code": code,
+            "total_op_exp": v,
+            "components": components_by_code.get(code, {}),
+        })
     return out
 
 
@@ -214,6 +286,9 @@ def extract(*, fiscal_year: int = 2024, triggered_by: str = "manual") -> dict:
         print(f"  AFSR Item 9 parishes/state-LEAs: {len(district_data):,}")
 
         no_match: list[str] = []
+        n_components_inserted = 0
+        n_components_updated = 0
+        n_components_unchanged = 0
         for d in district_data:
             district = crosswalk.get(d["code"])
             if district is None:
@@ -229,16 +304,47 @@ def extract(*, fiscal_year: int = 2024, triggered_by: str = "manual") -> dict:
                 source_document_id=src_id,
                 extraction_run_id=run.run_id,
             )
-            _, changed = upsert_budget_event_with_supersession(
+            event_id, changed = upsert_budget_event_with_supersession(
                 client=client, event=event
             )
             run.records_extracted += 1
             if changed:
                 run.records_changed += 1
 
+            # Phase 7.5 — emit canonical category components.
+            components: list[ComponentInput] = []
+            for category, amount in d.get("components", {}).items():
+                if amount <= 0:
+                    continue
+                codes, definition = LA_CATEGORY_CODES[category]
+                components.append(
+                    ComponentInput(
+                        category=category,
+                        amount=float(amount),
+                        definition=definition,
+                        line_or_cell_reference=(
+                            f"Sheet 'item9'; sum where Sponsorcd={d['code']} "
+                            f"AND Subcategory='TOT' AND Category in {codes}"
+                        ),
+                    )
+                )
+            if components:
+                ins, upd, unch = upsert_components(
+                    client=client,
+                    budget_event_id=event_id,
+                    components=components,
+                )
+                n_components_inserted += ins
+                n_components_updated += upd
+                n_components_unchanged += unch
+
         print(
             f"  inserted/changed={run.records_changed}/{run.records_extracted}; "
             f"unmatched AFSR codes: {len(no_match)}"
+        )
+        print(
+            f"  components: inserted={n_components_inserted} "
+            f"updated={n_components_updated} unchanged={n_components_unchanged}"
         )
 
     return {

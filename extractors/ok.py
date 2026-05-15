@@ -40,11 +40,13 @@ from supabase import Client
 
 from extractors._base import (
     BudgetEventInput,
+    ComponentInput,
     Run,
     fetch_all,
     sha256_bytes,
     upload_source_document,
     upsert_budget_event_with_supersession,
+    upsert_components,
     upsert_source_document_row,
 )
 
@@ -77,6 +79,35 @@ def download(url: str) -> bytes:
         return resp.read()
 
 
+# Phase 7.5 — OCAS canonical category mapping. The "With Exclusions"
+# file already filters out Function 4XXX (capital) and 5XXX (debt), so
+# capital_outlay and debt_service components are NOT extractable from
+# this file. employee_benefits is captured via Object code 200 across
+# all functions.
+def _ok_func_to_category(fc: int) -> str | None:
+    if 1000 <= fc <= 1999:
+        return "instruction"
+    if 2100 <= fc <= 2199:
+        return "support_services_student"
+    if 2200 <= fc <= 2299:
+        return "support_services_instruction"
+    if 2300 <= fc <= 2399:
+        return "administration"
+    if 2400 <= fc <= 2499:
+        return "administration"
+    if 2500 <= fc <= 2599:
+        return "administration"  # business
+    if 2600 <= fc <= 2699:
+        return "operations_maintenance"
+    if 2700 <= fc <= 2799:
+        return "transportation"
+    if 2800 <= fc <= 2999:
+        return "administration"  # central + other support
+    if 3100 <= fc <= 3199:
+        return "food_service"
+    return None  # 3000, 3200 (community), 3300 (enterprise), etc. — skip
+
+
 def parse_ocas(xlsx_bytes: bytes) -> list[dict]:
     wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes), read_only=True, data_only=True)
     ws = wb["Sheet1"]
@@ -86,6 +117,7 @@ def parse_ocas(xlsx_bytes: bytes) -> list[dict]:
     if header[:4] != expected:
         raise RuntimeError(f"Unexpected OCAS header: {header[:4]}")
     totals: dict[str, float] = {}
+    components: dict[str, dict[str, float]] = {}
     for r in rows:
         if not r or r[1] is None or r[2] is None:
             continue
@@ -100,8 +132,29 @@ def parse_ocas(xlsx_bytes: bytes) -> list[dict]:
             continue
         key = f"{cc}-{dc}"
         totals[key] = totals.get(key, 0.0) + v
+
+        # Phase 7.5 — canonical category breakdown
+        if v <= 0:
+            continue
+        try:
+            fc = int(r[6]) if r[6] is not None else None
+        except (TypeError, ValueError):
+            fc = None
+        try:
+            obj = int(r[8]) if r[8] is not None else None
+        except (TypeError, ValueError):
+            obj = None
+        if fc is not None:
+            cat = _ok_func_to_category(fc)
+            if cat is not None:
+                components.setdefault(key, {}).setdefault(cat, 0.0)
+                components[key][cat] += v
+        # employee_benefits: Object code 200 across all functions
+        if obj is not None and 200 <= obj <= 299:
+            components.setdefault(key, {}).setdefault("employee_benefits", 0.0)
+            components[key]["employee_benefits"] += v
     return [
-        {"code": k, "total_op_exp": v}
+        {"code": k, "total_op_exp": v, "components": components.get(k, {})}
         for k, v in totals.items()
         if v > 0
     ]
@@ -174,6 +227,9 @@ def extract(*, fiscal_year: int = 2025, triggered_by: str = "manual") -> dict:
         print(f"  OCAS districts with FY{fiscal_year} expenditures: {len(district_data):,}")
 
         no_match: list[str] = []
+        n_components_inserted = 0
+        n_components_updated = 0
+        n_components_unchanged = 0
         for d in district_data:
             district = crosswalk.get(d["code"])
             if district is None:
@@ -189,16 +245,50 @@ def extract(*, fiscal_year: int = 2025, triggered_by: str = "manual") -> dict:
                 source_document_id=src_id,
                 extraction_run_id=run.run_id,
             )
-            _, changed = upsert_budget_event_with_supersession(
+            event_id, changed = upsert_budget_event_with_supersession(
                 client=client, event=event
             )
             run.records_extracted += 1
             if changed:
                 run.records_changed += 1
 
+            # Phase 7.5 — emit canonical category components.
+            components: list[ComponentInput] = []
+            for category, amount in d.get("components", {}).items():
+                if amount <= 0:
+                    continue
+                components.append(
+                    ComponentInput(
+                        category=category,
+                        amount=float(amount),
+                        definition=(
+                            f"OSDE OCAS Expenditure Summary (With Exclusions): "
+                            f"sum Expended where Function/Object maps to '{category}' "
+                            f"per OCAS chart-of-accounts bucketing"
+                        ),
+                        line_or_cell_reference=(
+                            f"Sheet1 rows where CountyCode-DistrictCode={d['code']} "
+                            f"AND function/object code matches category bucket"
+                        ),
+                    )
+                )
+            if components:
+                ins, upd, unch = upsert_components(
+                    client=client,
+                    budget_event_id=event_id,
+                    components=components,
+                )
+                n_components_inserted += ins
+                n_components_updated += upd
+                n_components_unchanged += unch
+
         print(
             f"  inserted/changed={run.records_changed}/{run.records_extracted}; "
             f"unmatched OCAS codes (charters/dependent/Common districts): {len(no_match)}"
+        )
+        print(
+            f"  components: inserted={n_components_inserted} "
+            f"updated={n_components_updated} unchanged={n_components_unchanged}"
         )
 
     return {

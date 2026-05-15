@@ -43,11 +43,13 @@ from supabase import Client
 
 from extractors._base import (
     BudgetEventInput,
+    ComponentInput,
     Run,
     fetch_all,
     sha256_bytes,
     upload_source_document,
     upsert_budget_event_with_supersession,
+    upsert_components,
     upsert_source_document_row,
 )
 
@@ -83,6 +85,45 @@ def download(url: str) -> bytes:
         return resp.read()
 
 
+# Phase 7.5 — OR canonical category mapping by ODE function code (4-digit).
+# Each category gets a callable that returns True for matching function codes.
+def _or_func_to_category(fc: str) -> str | None:
+    """Map a 4-digit FunctionCd to a canonical category. None means
+    'leave out of component breakdown' (e.g. Community Services 3300)."""
+    if not fc or not fc.isdigit() or len(fc) != 4:
+        return None
+    n = int(fc)
+    if 1000 <= n <= 1999:
+        return "instruction"
+    if 2100 <= n <= 2199:
+        return "support_services_student"
+    if 2200 <= n <= 2299:
+        return "support_services_instruction"
+    if 2300 <= n <= 2399:
+        return "administration"  # general admin
+    if 2400 <= n <= 2499:
+        return "administration"  # school admin (combined)
+    if 2500 <= n <= 2519:
+        return "administration"  # business services
+    if 2540 <= n <= 2549:
+        return "operations_maintenance"
+    if 2550 <= n <= 2559:
+        return "transportation"
+    if 2520 <= n <= 2599:
+        return "administration"  # other support — fold into admin
+    if 3100 <= n <= 3199:
+        return "food_service"
+    if 3000 <= n <= 3099:
+        return "food_service"  # food/enterprise lead range
+    if 3200 <= n <= 3999:
+        return None  # Community Services (3300), Enterprise (3500) — skip
+    if 4000 <= n <= 4999:
+        return "capital_outlay"
+    if 5000 <= n <= 5999:
+        return "debt_service"
+    return None
+
+
 def parse_or(xlsx_bytes: bytes, fiscal_year: int) -> list[dict]:
     wb = openpyxl.load_workbook(io.BytesIO(xlsx_bytes), read_only=True, data_only=True)
     # Sheet name pattern: "{YYYY-YY} Actual Expenditure Data"
@@ -103,6 +144,7 @@ def parse_or(xlsx_bytes: bytes, fiscal_year: int) -> list[dict]:
         raise RuntimeError(f"Unexpected ODE header: {header[:8]}")
 
     totals: dict[int, float] = {}
+    components: dict[int, dict[str, float]] = {}
     for r in rows:
         if not r or r[1] is None or r[7] is None or r[13] is None:
             continue
@@ -110,17 +152,26 @@ def parse_or(xlsx_bytes: bytes, fiscal_year: int) -> list[dict]:
             inst_id = int(r[1])
         except (TypeError, ValueError):
             continue
-        # Function code first digit
-        fc_first = str(r[7])[0]
-        if fc_first not in {"1", "2", "3"}:
-            continue
         try:
             amt = float(r[13])
         except (TypeError, ValueError):
             continue
-        totals[inst_id] = totals.get(inst_id, 0.0) + amt
+        # Function code first digit (for topline)
+        fc_str = str(r[7])
+        fc_first = fc_str[0] if fc_str else ""
+        if fc_first in {"1", "2", "3"}:
+            totals[inst_id] = totals.get(inst_id, 0.0) + amt
+        # Phase 7.5 — canonical category breakdown (includes 4XXX + 5XXX)
+        category = _or_func_to_category(fc_str)
+        if category is not None and amt > 0:
+            components.setdefault(inst_id, {}).setdefault(category, 0.0)
+            components[inst_id][category] += amt
     return [
-        {"code": str(k), "total_op_exp": v}
+        {
+            "code": str(k),
+            "total_op_exp": v,
+            "components": components.get(k, {}),
+        }
         for k, v in totals.items()
         if v > 0
     ]
@@ -198,6 +249,9 @@ def extract(*, fiscal_year: int = 2024, triggered_by: str = "manual") -> dict:
         print(f"  ODE districts with operating expenditures: {len(district_data):,}")
 
         no_match: list[str] = []
+        n_components_inserted = 0
+        n_components_updated = 0
+        n_components_unchanged = 0
         for d in district_data:
             district = crosswalk.get(d["code"])
             if district is None:
@@ -213,16 +267,52 @@ def extract(*, fiscal_year: int = 2024, triggered_by: str = "manual") -> dict:
                 source_document_id=src_id,
                 extraction_run_id=run.run_id,
             )
-            _, changed = upsert_budget_event_with_supersession(
+            event_id, changed = upsert_budget_event_with_supersession(
                 client=client, event=event
             )
             run.records_extracted += 1
             if changed:
                 run.records_changed += 1
 
+            # Phase 7.5 — emit canonical category components.
+            components: list[ComponentInput] = []
+            for category, amount in d.get("components", {}).items():
+                if amount <= 0:
+                    continue
+                components.append(
+                    ComponentInput(
+                        category=category,
+                        amount=float(amount),
+                        definition=(
+                            f"ODE Detailed District Expenditure Data: sum "
+                            f"ActualExpAmt where Institution_ID={d['code']} "
+                            f"AND FunctionCd maps to '{category}' per ODE "
+                            f"Chart of Accounts function-range bucketing"
+                        ),
+                        line_or_cell_reference=(
+                            f"Sheet '{fiscal_year-1}-{(fiscal_year-2000):02d} "
+                            f"Actual Expenditure Data'; Institution_ID={d['code']}; "
+                            f"function-code range bucketing per _or_func_to_category"
+                        ),
+                    )
+                )
+            if components:
+                ins, upd, unch = upsert_components(
+                    client=client,
+                    budget_event_id=event_id,
+                    components=components,
+                )
+                n_components_inserted += ins
+                n_components_updated += upd
+                n_components_unchanged += unch
+
         print(
             f"  inserted/changed={run.records_changed}/{run.records_extracted}; "
             f"unmatched ODE Institution_IDs: {len(no_match)}"
+        )
+        print(
+            f"  components: inserted={n_components_inserted} "
+            f"updated={n_components_updated} unchanged={n_components_unchanged}"
         )
 
     return {
