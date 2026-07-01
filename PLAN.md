@@ -1,5 +1,24 @@
 # School District Budget Tracker — Project Plan
 
+> ## 🛑 PROJECT DECOMMISSIONED — 2026-07-01
+>
+> This project was **permanently retired** on 2026-07-01. Everything below is retained for historical reference; it no longer reflects a running system.
+>
+> **What was shut down / deleted:**
+> - **Supabase project** `school-budget-tracker` (`bwkgcofsxubdofklpsaw`) — database + Storage — **deleted** (dashboard).
+> - **Vercel portal** `school-spending-web` (school-spending-web.vercel.app) — **deleted** (now returns 404).
+> - **GitHub Actions daily cron** ("Daily extractor run") — **disabled**.
+> - **DB webhook triggers** (`revalidate-budget-events` / `-runs` / `-triggers`, migration 0008) — **dropped**.
+> - **Credentials** — GH Actions secrets `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` deleted; the `GITHUB_REPO_DISPATCH_TOKEN` PAT revoked; local `.env.local` removed.
+>
+> **Archive (complete + integrity-verified):** `~/school_spending_archive_2026-07-01/`
+> - `db/` — `schema.sql` (13 tables, 8 views, 5 enums, 27 RLS policies, 8 triggers, 7 functions), `data.sql` (all rows; counts match snapshot exactly), `roles.sql`, `row_counts.txt`.
+> - `storage/` — all **614** source documents across 45 buckets (915 MB); 613 SHA-256 exact matches + 1 documented benign exception (WA F-195 hash describes source `.accdb`).
+> - `code/` — git bundles of both repos at their final commits (`20a35b1`, `5fe767d`).
+> - `MANIFEST.md` + `integrity_report.txt` — restore instructions and full verification record.
+>
+> To resume the project, restore from that archive (see `MANIFEST.md`) or rebuild the schema from `migrations/0000`–`0015`.
+
 This document is the source of truth for project scope, architecture, and conventions. It is written for Claude Code to read at the start of every working session, and for human contributors to review and amend.
 
 If anything in this document is wrong, fix the document first, then the code. Don't silently diverge.

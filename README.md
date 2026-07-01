@@ -1,5 +1,9 @@
 # School District Budget Tracker — Initial Repo Package
 
+> ## 🛑 PROJECT DECOMMISSIONED — 2026-07-01
+>
+> This project was permanently retired on 2026-07-01. The Supabase database (`bwkgcofsxubdofklpsaw`) and the Vercel portal (`school-spending-web`) have been deleted; the daily GitHub Actions cron is disabled and the DB webhook triggers are dropped. A complete, integrity-verified archive (DB schema + data, all 614 Storage source documents, git bundles of both repos) lives at `~/school_spending_archive_2026-07-01/` — see its `MANIFEST.md`. See `PLAN.md` for the full decommission record. Everything below is historical.
+
 This is the initial seed for a new Git repository. Drop the contents of this directory into the root of an empty repo and commit.
 
 ## What's here

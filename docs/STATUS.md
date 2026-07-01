@@ -1,6 +1,10 @@
 # School District Budget Tracker — State-by-State Status
 
-_Last updated: 2026-05-15_
+_Last updated: 2026-07-01_
+
+> ## 🛑 PROJECT DECOMMISSIONED — 2026-07-01
+>
+> The project was permanently retired on 2026-07-01. The Supabase database and Vercel portal have been deleted; the daily cron is disabled. The state-by-state snapshot below is frozen at its final live state (45 states + DC, 97.6% enrollment) and is retained for historical reference only. A complete, integrity-verified archive is at `~/school_spending_archive_2026-07-01/` (see its `MANIFEST.md`).
 
 **Coverage:** 45 states (+ DC) live, 43.7M / 44.8M K-12 students = **97.6% of US enrollment**. NY landed 2026-05-15 (the prior "no bulk feed" deferral was wrong — NYSED publishes ST-3 at a stable URL after all).
 
